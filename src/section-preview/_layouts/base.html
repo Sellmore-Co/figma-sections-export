@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }}</title>
+
+  <!-- Design tokens -->
+  <link rel="stylesheet" href="{{ 'css/tokens.css' | campaign_asset }}">
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'brand-primary':   'var(--color-brand-primary)',
+            'brand-secondary': 'var(--color-brand-secondary)',
+            'text-primary':    'var(--color-text-primary)',
+            'text-secondary':  'var(--color-text-secondary)',
+          }
+        }
+      }
+    }
+  </script>
+
+  {% for style in styles %}
+  <link rel="stylesheet" href="{{ style | campaign_asset }}">
+  {% endfor %}
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; }
+  </style>
+</head>
+<body>
+  {{ content }}
+
+  {% for script in scripts %}
+  <script src="{{ script | campaign_asset }}"></script>
+  {% endfor %}
+</body>
+</html>

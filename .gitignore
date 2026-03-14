@@ -1,0 +1,20 @@
+**/.DS_Store
+.AppleDouble
+.LSOverride
+node_modules/
+_site/
+.tmp/
+prepros.cfg
+prepros-6.config
+prepros.config
+scss/
+**/.sass-cache
+**/.sass-cache/*
+.vscode/*
+.cursor/
+
+# Local Netlify folder
+.netlify
+
+# Claude Code local settings
+.claude/settings.local.json

@@ -1,0 +1,20 @@
+{
+  "name": "figma-templates-export",
+  "version": "1.0.0",
+  "description": "Figma section export preview project",
+  "private": true,
+  "scripts": {
+    "setup": "campaign-init",
+    "start": "campaign-start",
+    "dev": "campaign-dev",
+    "build": "campaign-build",
+    "clone": "campaign-clone",
+    "config": "campaign-config",
+    "compress": "campaign-compress",
+    "compress:preview": "campaign-compress --preview",
+    "migrate": "campaign-migrate"
+  },
+  "dependencies": {
+    "next-campaign-page-kit": "latest"
+  }
+}
