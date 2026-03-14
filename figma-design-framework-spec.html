@@ -170,6 +170,15 @@ cd figma-templates-export
 npm install</code></pre>
 <p><code>npm install</code> pulls <code>next-campaign-page-kit</code> from npm and makes the <code>campaign-dev</code>, <code>campaign-build</code> commands available.</p>
 
+<h3>Step 2 — Add your Figma personal access token</h3>
+<pre><code>cp .env.example .env</code></pre>
+<p>Open <code>.env</code> and paste your token. This is used by the <code>save-ref.sh</code> script to download reference screenshots of each section at each breakpoint via the Figma REST API.</p>
+<div class="card">
+  <h4>Getting your token</h4>
+  <p><strong>Figma → Account Settings → Personal Access Tokens → Generate new token</strong></p>
+  <p style="margin-bottom:0">Scopes needed: <strong>File content</strong> (read) + <strong>File metadata</strong> (read). The token is stored only in your local <code>.env</code> file which is gitignored.</p>
+</div>
+
 <section id="figma-mcp">
 <h3>Step 3 — Enable the Figma MCP plugin in Claude Code</h3>
 <p>The Figma MCP server gives Claude direct read access to your Figma files — no manual copy-paste of node data needed. Claude can fetch design context, screenshots, and asset URLs directly.</p>
@@ -221,7 +230,7 @@ https://www.figma.com/design/{fileKey}/...?node-id=143-10518
 https://www.figma.com/design/{fileKey}/...?node-id=143-10610
 https://www.figma.com/design/{fileKey}/...?node-id=143-12936</code></pre>
 
-<p>Claude fetches all 3 breakpoints in parallel using the Figma MCP plugin, then generates the Liquid partial following the export process in <a href="#export-process">Section 13</a>.</p>
+<p>Claude fetches all 3 breakpoints in parallel, saves reference screenshots, generates the Liquid partial, and downloads all assets. See <a href="#export-process">Section 13</a> for the full step-by-step process.</p>
 
 <h3>Step 5 — Preview</h3>
 <pre><code>npm run dev</code></pre>
@@ -396,7 +405,8 @@ https://www.figma.com/design/{fileKey}/...?node-id=143-12936</code></pre>
 <tr><td>Atomic component</td><td><code>component/{name}</code></td><td><code>component/cta-button</code></td><td><code>_includes/_components/cta-button.html</code></td></tr>
 <tr><td>Component property</td><td><code>snake_case</code></td><td><code>headline_text</code></td><td><code>{{ headline_text }}</code></td></tr>
 <tr><td>Boolean property</td><td><code>show_{element}</code></td><td><code>show_badge</code></td><td><code>{% if show_badge %}</code></td></tr>
-<tr><td>Image layer</td><td><code>img:{filename}</code></td><td><code>img:hero-bg</code></td><td><code>images/hero-bg.jpg</code></td></tr>
+<tr><td>Contained image</td><td><code>img:{filename}</code></td><td><code>img:hero-product</code></td><td><code>&lt;img&gt;</code> + <code>object-contain</code></td></tr>
+<tr><td>Background image</td><td><code>bg:{filename}</code></td><td><code>bg:hero-bg</code></td><td>CSS <code>background-image</code></td></tr>
 <tr><td>Link annotation</td><td><code>link:{target}</code></td><td><code>link:checkout</code></td><td><code>{{ 'checkout.html' | campaign_link }}</code></td></tr>
 <tr><td>Variant property</td><td><code>breakpoint</code></td><td><code>breakpoint=desktop</code></td><td>Responsive CSS breakpoint</td></tr>
 <tr><td>Color style</td><td><code>brand/{name}</code></td><td><code>brand/primary</code></td><td><code>--brand-primary</code> / <code>bg-brand-primary</code></td></tr>
@@ -826,6 +836,49 @@ styles:
 <pre><code><span class="comment">// Figma property: background_image (Text) = "images/hero-bg.jpg"</span>
 <span class="comment">// Liquid output:</span>
 <span class="tag">&lt;img</span> <span class="attr">src</span>=<span class="string">"{{ background_image | campaign_asset }}"</span> <span class="attr">alt</span>=<span class="string">"{{ background_image_alt }}"</span><span class="tag">&gt;</span></code></pre>
+
+<div class="card danger">
+<h4>Two Image Patterns — Designer Must Choose One</h4>
+<p>Every section image is either a <strong>background</strong> or a <strong>contained image</strong>. The designer declares which by using the correct layer name prefix. Getting this wrong means the export will look broken at responsive widths.</p>
+
+<table style="margin-top:12px;font-size:13px;width:100%;border-collapse:collapse;">
+<tr style="background:#f8fafc;">
+  <th style="text-align:left;padding:8px 10px;border:1px solid #e2e8f0;"></th>
+  <th style="text-align:left;padding:8px 10px;border:1px solid #e2e8f0;">Pattern 1 — <code>bg:</code> Background</th>
+  <th style="text-align:left;padding:8px 10px;border:1px solid #e2e8f0;">Pattern 2 — <code>img:</code> Contained</th>
+</tr>
+<tr>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;font-weight:600;">Layer name</td>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;font-family:monospace">bg:hero-bg</td>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;font-family:monospace">img:hero-product</td>
+</tr>
+<tr>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;font-weight:600;">Design intent</td>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;">Decorative fill, content sits on top, bleeds to edges</td>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;">Discrete visual element alongside content in a column</td>
+</tr>
+<tr>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;font-weight:600;">Figma setup</td>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;">Image fill on the section/column frame. Bleed/offset OK.</td>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;">Must be fully contained within its frame. No bleed. Transparent PNG. Full subject visible.</td>
+</tr>
+<tr>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;font-weight:600;">Code output</td>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;">CSS <code>background-image: cover</code> on the element</td>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;"><code>&lt;img&gt;</code> with <code>object-contain</code></td>
+</tr>
+<tr>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;font-weight:600;">Asset export</td>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;"><code>export-node.sh</code> on the section/column node</td>
+  <td style="padding:8px 10px;border:1px solid #e2e8f0;"><code>export-node.sh</code> on the image layer node</td>
+</tr>
+</table>
+
+<p style="margin-top:12px;margin-bottom:4px"><strong>Why not use the raw asset URL from <code>get_design_context</code>?</strong> The MCP returns the original uploaded source file — not what Figma renders on canvas. A 1500px wide image cropped with Figma offset still gives you 1500px when downloaded via the raw URL. Always use <code>export-node.sh</code>.</p>
+
+<pre style="margin-bottom:0"><code><span class="comment"># Always export the node, never use the raw imgRectangle URL</span>
+./scripts/export-node.sh {node-id} src/{campaign}/assets/images/{filename}.png 2</code></pre>
+</div>
 </section>
 
 <!-- ============================================ -->
@@ -1304,18 +1357,46 @@ get_design_context(nodeId: "143:12936", fileKey: "...")  <span class="comment">#
   <span class="comment">&lt;!-- bullets, CTA, testimonial always visible --&gt;</span>
 <span class="tag">&lt;/div&gt;</span></code></pre>
 
-<h3>Step 5 — Download Figma assets immediately</h3>
+<h3>Step 5 — Save reference screenshots</h3>
+<p>Immediately after fetching the 3 design contexts, save a reference PNG of each breakpoint. These give Claude an accurate visual target when writing HTML and serve as a permanent record of the design intent.</p>
+
+<pre><code>./scripts/save-ref.sh {campaign} {section} {desktop-id} {tablet-id} {mobile-id}
+
+# Example:
+./scripts/save-ref.sh section-preview hero-2 143:10703 143:10748 143:13028</code></pre>
+
+<p>Output (gitignored — local only):</p>
+<pre><code>src/{campaign}/_ref/
+  hero-2-desktop.png   ← visual target at 1440px
+  hero-2-tablet.png    ← visual target at 768px
+  hero-2-mobile.png    ← visual target at 375px</code></pre>
+
+<div class="card">
+  <h4>Requires .env token</h4>
+  <p style="margin-bottom:0">The script uses <code>FIGMA_ACCESS_TOKEN</code> from your <code>.env</code> file to call the Figma REST API export endpoint. See Getting Started Step 2 for setup.</p>
+</div>
+
+<h3>Step 6 — Download Figma assets immediately</h3>
 <p>Asset URLs from <code>get_design_context</code> expire after 7 days. Download them before previewing.</p>
 
-<pre><code><span class="comment"># Icons and UI assets — URLs come from get_design_context output</span>
-curl -sL "[star-url]"          -o "assets/images/star.svg"
-curl -sL "[checkmark-url]"     -o "assets/images/checkmark.svg"
-curl -sL "[dollar-url]"        -o "assets/images/dollar.png"
-curl -sL "[verified-url]"      -o "assets/images/verified-icon.svg"
-curl -sL "[avatar-url]"        -o "assets/images/testimonial-avatar.jpg"
+<pre><code><span class="comment"># Download assets — detect actual format before naming</span>
+curl -sL "[check-url]"    -o "assets/images/icon-check.tmp"
+curl -sL "[arrow-url]"    -o "assets/images/icon-arrow.tmp"
+curl -sL "[photo-url]"    -o "assets/images/hero-photo.tmp"
 
-<span class="comment"># Image fills (e.g. hero photos) don't surface as URLs.
-# Export manually: right-click the frame in Figma → Export → PNG</span></code></pre>
+<span class="comment"># Always verify format — Figma returns SVG for vectors</span>
+file assets/images/*.tmp
+<span class="comment"># icon-check.tmp: SVG Scalable Vector Graphics image  → rename .svg
+# icon-arrow.tmp: SVG Scalable Vector Graphics image  → rename .svg
+# hero-photo.tmp: PNG image data, 1500x647 ...        → rename .png</span>
+
+<span class="comment"># Image fills (hero photos, backgrounds) don't surface as URLs.
+# Export manually: right-click frame in Figma → Export → PNG</span></code></pre>
+
+<div class="card danger" style="margin-top:16px">
+<h4>Figma MCP always returns SVG for vector assets</h4>
+<p>Icons, badges, and illustrations are returned as <code>SVG</code> regardless of what filename extension you use when saving. Saving a vector as <code>.png</code> causes it to silently not render in the browser. Always run <code>file</code> on downloaded assets to verify format and rename accordingly.</p>
+</div>
 </section>
 
 <section id="common-mistakes">
@@ -1341,6 +1422,16 @@ curl -sL "[avatar-url]"        -o "assets/images/testimonial-avatar.jpg"
 <p>Tailwind CDN belongs in <code>_layouts/base.html</code> only. Sections are partials — they don't own the document head. Adding it to a section causes it to load multiple times.</p>
 </div>
 
+<div class="card danger">
+<h4>Wrong path in campaign_include</h4>
+<p>The <code>campaign_include</code> tag automatically resolves paths relative to the campaign's <code>_includes/</code> directory. Prefixing the path with <code>_includes/</code> doubles it and silently renders nothing.</p>
+<table style="margin-top:8px;font-size:13px;width:100%">
+<tr><th style="text-align:left;padding:4px 8px;background:#fef2f2">❌ Wrong</th><th style="text-align:left;padding:4px 8px;background:#f0fdf4">✅ Correct</th></tr>
+<tr><td style="padding:4px 8px;font-family:monospace">{% campaign_include '_includes/hero.html' %}</td><td style="padding:4px 8px;font-family:monospace">{% campaign_include 'hero.html' %}</td></tr>
+<tr><td style="padding:4px 8px;font-family:monospace">{% campaign_include '_includes/_components/btn.html' %}</td><td style="padding:4px 8px;font-family:monospace">{% campaign_include '_components/btn.html' %}</td></tr>
+</table>
+</div>
+
 <div class="card">
 <h4>Preview project structure</h4>
 <pre style="margin-bottom:0"><code>_data/campaigns.json
@@ -1349,6 +1440,7 @@ src/{campaign-slug}/
   _includes/{section}.html    <span class="comment">← generated partial</span>
   assets/css/tokens.css       <span class="comment">← CSS custom properties</span>
   assets/images/              <span class="comment">← all downloaded Figma assets</span>
+  _ref/                       <span class="comment">← reference screenshots per breakpoint (gitignored)</span>
   index.html                  <span class="comment">← page using campaign_include</span></code></pre>
 </div>
 </section>

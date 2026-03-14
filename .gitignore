@@ -18,3 +18,9 @@ scss/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Local secrets
+.env
+
+# Figma reference screenshots (local only)
+src/**/_ref/
