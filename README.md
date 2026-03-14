@@ -26,7 +26,15 @@ cp .env.example .env
 ```bash
 claude .
 ```
-Confirm the Figma MCP plugin is listed in available tools.
+On startup, Claude Code lists active MCP servers. You should see:
+```
+✓ figma (mcp)
+```
+If it's missing, install the plugin once:
+```bash
+claude mcp add --name figma https://mcp.figma.com/mcp
+```
+Then restart Claude Code. You'll know it's working when Claude can call `get_design_context` and return a live screenshot directly from a Figma URL.
 
 **4. Copy 3 Figma links** (desktop, tablet, mobile) with **Cmd+L** on each frame, then paste into Claude:
 ```
