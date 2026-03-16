@@ -1,1 +1,23 @@
-{}
+{
+  "presell-1": {
+    "name": "Presell 1 — Listicle"
+  },
+  "hero-1": {
+    "name": "Hero 1 — Section Preview"
+  },
+  "hero-2": {
+    "name": "Hero 2 — Section Preview"
+  },
+  "hero-3": {
+    "name": "Hero 3 — Section Preview"
+  },
+  "hero-4": {
+    "name": "Hero 4 — Section Preview"
+  },
+  "hero-5": {
+    "name": "Hero 5 — Section Preview"
+  },
+  "hero-6": {
+    "name": "Hero 6 — Section Preview"
+  }
+}

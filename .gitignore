@@ -18,3 +18,9 @@ scss/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Local secrets
+.env
+
+# Campaign previews — local working directory, not part of the tool
+src/

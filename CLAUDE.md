@@ -156,7 +156,8 @@ Figma File: "Debranded Sections"
 | Atomic component | `component/{name}` | `component/cta-button` | `_includes/_components/cta-button.html` |
 | Component property | `snake_case` | `headline_text` | `{{ headline_text }}` |
 | Boolean property | `show_{element}` | `show_badge` | `{% if show_badge %}` |
-| Image layer | `img:{filename}` | `img:hero-bg` | `images/hero-bg.jpg` |
+| Contained image | `img:{filename}` | `img:hero-product` | `<img>` + `object-contain` |
+| Background image | `bg:{filename}` | `bg:hero-bg` | CSS `background-image` |
 | Link annotation | `link:{target}` | `link:checkout` | `{{ 'checkout.html' \| campaign_link }}` |
 | Variant property | `breakpoint` | `breakpoint=desktop` | Responsive CSS breakpoint |
 | Color style | `brand/{name}` | `brand/primary` | `--brand-primary` |
@@ -339,6 +340,64 @@ Dynamic images exposed as text property piped through `campaign_asset`:
 ```liquid
 <img src="{{ background_image | campaign_asset }}" alt="{{ background_image_alt }}">
 ```
+
+### Two Image Patterns — Designer Must Choose One
+
+Every section image falls into one of two patterns. The designer declares which pattern by using the correct layer naming prefix. There is no ambiguity — if the prefix isn't set correctly, the export will be wrong.
+
+---
+
+#### Pattern 1 — `bg:` Background Image
+
+The image is a **decorative fill** that covers a section or column. Content sits on top of it. It bleeds to the edges and is not a discrete visual element.
+
+**Figma:** name the layer `bg:{filename}` (e.g. `bg:hero-bg`). Place the image as a fill on the section or column frame. Figma's offset/bleed positioning is fine here.
+
+**Code output:** CSS `background-image` on the containing element.
+
+```html
+<section style="background-image: url('{{ bg_image | campaign_asset }}');
+                background-size: cover; background-position: center top;">
+  <div class="max-w-[1440px] mx-auto px-4 py-24">
+    <!-- content overlaid on background -->
+  </div>
+</section>
+```
+
+**Asset export:** use `export-node.sh` on the section/column node to get the canvas-rendered version at the correct crop.
+
+---
+
+#### Pattern 2 — `img:` Contained Image
+
+The image is a **discrete visual element** — a product, person, illustration — that sits alongside content in a column. It has defined bounds and a transparent background.
+
+**Figma:** name the layer `img:{filename}` (e.g. `img:hero-product`). The image **must be fully contained within its frame** — no bleed, no offset, transparent PNG. The full subject (dog, product, person) must be visible within the frame boundary.
+
+**Code output:** `<img>` tag with `object-contain`.
+
+```html
+<img src="{{ hero_image | campaign_asset }}"
+     alt="{{ hero_image_alt }}"
+     class="w-full h-auto md:absolute md:inset-0 md:h-full md:w-full md:object-contain md:object-right-bottom">
+```
+
+**Asset export:** use `export-node.sh` on the image layer node to get the canvas-rendered PNG (not the raw fill asset URL from `get_design_context`, which gives the original un-cropped source file).
+
+```bash
+./scripts/export-node.sh {node-id} src/{campaign}/assets/images/{filename}.png 2
+```
+
+---
+
+#### Why not use the raw asset URL from `get_design_context`?
+
+The MCP returns the **original uploaded source file** — not what Figma renders on canvas. A designer can upload a 1500px wide image, crop it in the frame with offset positioning, and the raw asset URL still gives you the 1500px original. Always use `export-node.sh` to get the canvas-rendered version.
+
+| Source | What you get |
+|---|---|
+| `imgRectangle730` URL from `get_design_context` | Original uploaded file — wrong size, un-cropped |
+| `export-node.sh {node-id}` | Canvas-rendered PNG — correctly cropped and sized |
 
 ---
 
@@ -525,22 +584,59 @@ When mobile layout reorders elements (e.g. heading above image, image above cont
 <div class="hidden md:flex flex-col ...">{{ heading }}...</div>
 ```
 
-### Step 5 — Download Figma assets immediately
+### Step 5 — Save reference screenshots
+
+Save a PNG of each breakpoint node for visual reference during HTML authoring and future review. These live in `src/{campaign}/_ref/` (gitignored — local only).
+
+```bash
+./scripts/save-ref.sh section-preview hero-2 143:10703 143:10748 143:13028
+```
+
+Requires `FIGMA_ACCESS_TOKEN` in a `.env` file (copy `.env.example` → `.env`). Get your token from Figma → Account Settings → Personal Access Tokens.
+
+Output:
+```
+src/{campaign}/_ref/
+  hero-2-desktop.png
+  hero-2-tablet.png
+  hero-2-mobile.png
+```
+
+Use these images when writing HTML to compare the output against the Figma design at each breakpoint.
+
+---
+
+### Step 6 — Download Figma assets immediately
 
 Asset URLs from `get_design_context` expire in 7 days. Download all icons and images before previewing:
 
 ```bash
-# Icons and UI assets — download from Figma asset URLs
-curl -sL "[url]" -o "src/{campaign}/assets/images/star.svg"
-curl -sL "[url]" -o "src/{campaign}/assets/images/checkmark.svg"
-curl -sL "[url]" -o "src/{campaign}/assets/images/dollar.png"
-curl -sL "[url]" -o "src/{campaign}/assets/images/verified-icon.svg"
+# Download all assets — use a temporary extension first
+curl -sL "[url]" -o "src/{campaign}/assets/images/icon-check.tmp"
+curl -sL "[url]" -o "src/{campaign}/assets/images/icon-arrow.tmp"
+curl -sL "[url]" -o "src/{campaign}/assets/images/hero-photo.tmp"
 
+# Detect actual format — Figma returns SVG for vectors regardless of extension
+file src/{campaign}/assets/images/*.tmp
+# Example output:
+#   icon-check.tmp: SVG Scalable Vector Graphics image
+#   icon-arrow.tmp: SVG Scalable Vector Graphics image
+#   hero-photo.tmp: PNG image data, 1500x647 ...
+
+# Rename with correct extensions
+mv icon-check.tmp icon-check.svg
+mv icon-arrow.tmp icon-arrow.svg
+mv hero-photo.tmp hero-photo.png
+```
+
+**Rule:** Figma MCP always returns SVG for vector assets (icons, badges, illustrations) and PNG/JPG for raster images. Saving a vector as `.png` causes it to silently not render in the browser.
+
+```bash
 # Photo assets — export manually from Figma (right-click frame → Export)
 # Image fills don't surface as URLs in get_design_context output
 ```
 
-### Step 6 — Preview project structure
+### Step 7 — Preview project structure
 
 ```
 _data/campaigns.json
@@ -564,6 +660,12 @@ Run: `npm run dev` → select campaign → `http://localhost:3000/{slug}/`
 | `whitespace-nowrap` on body/bullet text | Only use on single-word UI labels |
 | Tailwind CDN in section partial | CDN belongs in `_layouts/base.html` only |
 | CSS tokens defined inline | Always a separate `css/tokens.css`, listed in frontmatter `styles:` |
+| Saving SVG assets as `.png` | Run `file *.png` after download — Figma returns SVG for all vectors; rename to `.svg` |
+| `campaign_include '_includes/hero.html'` | Tag auto-prepends `_includes/` — use just `'hero.html'` or `'_components/btn.html'` |
+| SVG icon stretches vertically | Check SVG source for `preserveAspectRatio="none"` — if present, set explicit `w-[N] h-[N]` on the `<img>`, not just width |
+| Arrow/icon points wrong direction | Figma MCP code often wraps icons in `rotate-90` — carry that rotation over as a Tailwind class on the `<img>` |
+| Non-web font (Bayshore, script/display fonts) renders as fallback | Export the text node as a PNG with `export-node.sh` and use `<img>` instead of a font |
+| `w-auto` image stretches inside `flex flex-col` | `align-items: stretch` overrides `w-auto` — add `self-start` to the `<img>` |
 
 ---
 
