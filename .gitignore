@@ -22,5 +22,5 @@ scss/
 # Local secrets
 .env
 
-# Figma reference screenshots (local only)
-src/**/_ref/
+# Campaign previews — local working directory, not part of the tool
+src/

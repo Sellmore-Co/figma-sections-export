@@ -662,6 +662,10 @@ Run: `npm run dev` → select campaign → `http://localhost:3000/{slug}/`
 | CSS tokens defined inline | Always a separate `css/tokens.css`, listed in frontmatter `styles:` |
 | Saving SVG assets as `.png` | Run `file *.png` after download — Figma returns SVG for all vectors; rename to `.svg` |
 | `campaign_include '_includes/hero.html'` | Tag auto-prepends `_includes/` — use just `'hero.html'` or `'_components/btn.html'` |
+| SVG icon stretches vertically | Check SVG source for `preserveAspectRatio="none"` — if present, set explicit `w-[N] h-[N]` on the `<img>`, not just width |
+| Arrow/icon points wrong direction | Figma MCP code often wraps icons in `rotate-90` — carry that rotation over as a Tailwind class on the `<img>` |
+| Non-web font (Bayshore, script/display fonts) renders as fallback | Export the text node as a PNG with `export-node.sh` and use `<img>` instead of a font |
+| `w-auto` image stretches inside `flex flex-col` | `align-items: stretch` overrides `w-auto` — add `self-start` to the `<img>` |
 
 ---
 
