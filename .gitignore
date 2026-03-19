@@ -24,3 +24,6 @@ scss/
 
 # Campaign previews — local working directory, not part of the tool
 src/
+
+# Campaign data — local, not part of the tool
+_data/campaigns.json
