@@ -12,7 +12,8 @@
     "config": "campaign-config",
     "compress": "campaign-compress",
     "compress:preview": "campaign-compress --preview",
-    "migrate": "campaign-migrate"
+    "migrate": "campaign-migrate",
+    "new": "bash scripts/new-section.sh"
   },
   "dependencies": {
     "next-campaign-page-kit": "latest"
