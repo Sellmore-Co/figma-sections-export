@@ -769,6 +769,8 @@ Run: `npm run dev` → select campaign → `http://localhost:3000/{slug}/`
 | Arrow/icon points wrong direction                                 | Figma MCP code often wraps icons in `rotate-90` — carry that rotation over as a Tailwind class on the `<img>`             |
 | Non-web font (Bayshore, script/display fonts) renders as fallback | Export the text node as a PNG with `export-node.sh` and use `<img>` instead of a font                                     |
 | `w-auto` image stretches inside `flex flex-col`                   | `align-items: stretch` overrides `w-auto` — add `self-start` to the `<img>`                                               |
+| p-big font size uses `lg:` prefix (`text-[18px] lg:text-[20px]`) | Tablet is also 20px — always use `md:` prefix: `text-[18px] md:text-[20px]`                                               |
+| p-small font size uses `md:` prefix (`text-[14px] md:text-[16px]`) | Tablet stays at 14px — always use `lg:` prefix: `text-[14px] lg:text-[16px]`                                            |
 
 
 ---

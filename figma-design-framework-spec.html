@@ -583,24 +583,43 @@ A hero banner with headline, subheadline, CTA button, and background image.
 <section id="typography">
 <h2>9. Design Tokens: Typography</h2>
 
-<h3>Typography Style Naming</h3>
+<h3>Typography Variables</h3>
+
+<p>Font sizes come from <strong>Figma Variables</strong> (<code>--font/size-*</code>), not Figma Text Styles. Each variable has a different fallback px value per breakpoint node — reading all three fallbacks is how you determine the responsive class.</p>
+
+<p><strong>How <code>get_design_context</code> surfaces this:</strong></p>
+<pre><code>text-[length:var(--font/size-heading2,40px)]   ← desktop node fallback
+text-[length:var(--font/size-heading2,32px)]   ← tablet node fallback
+text-[length:var(--font/size-heading2,28px)]   ← mobile node fallback</code></pre>
+
+<p>Read the three fallback values across all three breakpoint nodes, then generate responsive Tailwind classes.</p>
 
 <table>
-<tr><th>Figma Style Name</th><th>Properties</th><th>Tailwind Equivalent</th><th>Custom CSS Class</th></tr>
-<tr><td><code>text/display</code></td><td>48px / 700 / 1.1</td><td><code>text-5xl font-bold leading-tight</code></td><td><code>.text-display</code></td></tr>
-<tr><td><code>text/heading-1</code></td><td>36px / 700 / 1.2</td><td><code>text-4xl font-bold leading-tight</code></td><td><code>.text-heading-1</code></td></tr>
-<tr><td><code>text/heading-2</code></td><td>28px / 700 / 1.3</td><td><code>text-3xl font-bold</code></td><td><code>.text-heading-2</code></td></tr>
-<tr><td><code>text/heading-3</code></td><td>22px / 600 / 1.4</td><td><code>text-2xl font-semibold</code></td><td><code>.text-heading-3</code></td></tr>
-<tr><td><code>text/body-lg</code></td><td>18px / 400 / 1.7</td><td><code>text-lg</code></td><td><code>.text-body-lg</code></td></tr>
-<tr><td><code>text/body</code></td><td>16px / 400 / 1.7</td><td><code>text-base</code></td><td><code>.text-body</code></td></tr>
-<tr><td><code>text/body-sm</code></td><td>14px / 400 / 1.6</td><td><code>text-sm</code></td><td><code>.text-body-sm</code></td></tr>
-<tr><td><code>text/caption</code></td><td>12px / 500 / 1.5</td><td><code>text-xs font-medium</code></td><td><code>.text-caption</code></td></tr>
-<tr><td><code>text/overline</code></td><td>12px / 700 / 1.5 / uppercase</td><td><code>text-xs font-bold uppercase tracking-wider</code></td><td><code>.text-overline</code></td></tr>
+<tr><th>Figma Variable</th><th>Mobile</th><th>Tablet</th><th>Desktop</th><th>Tailwind output</th></tr>
+<tr><td><code>--font/size-heading1</code></td><td>32px</td><td>36px</td><td>44px</td><td><code>text-[32px] md:text-[36px] lg:text-[44px]</code></td></tr>
+<tr><td><code>--font/size-heading2</code></td><td>28px</td><td>32px</td><td>40px</td><td><code>text-[28px] md:text-[32px] lg:text-[40px]</code></td></tr>
+<tr><td><code>--font/size-heading3</code></td><td>24px</td><td>26px</td><td>28px</td><td><code>text-[24px] md:text-[26px] lg:text-[28px]</code></td></tr>
+<tr><td><code>--font/size-p-large</code></td><td>20px</td><td>20px</td><td>24px</td><td><code>text-[20px] lg:text-[24px]</code></td></tr>
+<tr><td><code>--font/size-p-big</code></td><td>18px</td><td>20px</td><td>20px</td><td><code>text-[18px] md:text-[20px]</code></td></tr>
+<tr><td><code>--font/size-p-medium</code></td><td>16px</td><td>18px</td><td>18px</td><td><code>text-[16px] md:text-[18px]</code></td></tr>
+<tr><td><code>--font/size-p-small</code></td><td>14px</td><td>14px</td><td>16px</td><td><code>text-[14px] lg:text-[16px]</code></td></tr>
+<tr><td><code>--font/size-p-tiny</code></td><td>12px</td><td>12px</td><td>14px</td><td><code>text-[12px] lg:text-[14px]</code></td></tr>
 </table>
 
 <div class="card highlight">
+<h4>Breakpoint prefix rules</h4>
+<ul style="margin-bottom:0">
+<li>Only add <code>md:</code> / <code>lg:</code> prefixes where the fallback value actually changes between breakpoints.</li>
+<li>If a size is the same across all three breakpoints, emit a single class with no prefix.</li>
+<li><strong>p-big</strong>: tablet AND desktop are both 20px → use <code>md:</code> not <code>lg:</code></li>
+<li><strong>p-small</strong>: tablet stays at 14px → use <code>lg:</code> not <code>md:</code></li>
+<li>Read fallback values from <strong>section content nodes</strong>, not from shared components (e.g. the CTA button always outputs desktop fallbacks regardless of breakpoint).</li>
+</ul>
+</div>
+
+<div class="card highlight">
 <h4>Font Family Convention</h4>
-<p style="margin-bottom:0">Define the font family as a Figma variable (not baked into each style). The export script reads the variable and generates either a Google Fonts <code>&lt;link&gt;</code> tag or a <code>@font-face</code> declaration. Store in campaigns.json as <code>{{ campaign.font_family }}</code>.</p>
+<p style="margin-bottom:0">Font weight and family are inlined per element — there is no shared text style. Read them directly from the MCP output (e.g. <code>font-bold</code>, <code>font-semibold</code>). Define the font family as a Figma variable. Store in campaigns.json as <code>{{ campaign.font_family }}</code>.</p>
 </div>
 </section>
 
