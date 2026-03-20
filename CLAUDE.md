@@ -176,8 +176,9 @@ Figma File: "Debranded Sections"
 | Atomic component   | `component/{name}` | `component/cta-button` | `_includes/_components/cta-button.html` |
 | Component property | `snake_case`       | `headline_text`        | `{{ headline_text }}`                   |
 | Boolean property   | `show_{element}`   | `show_badge`           | `{% if show_badge %}`                   |
-| Contained image    | `img:{filename}`   | `img:hero-product`     | `<img>` + `object-contain`              |
-| Background image   | `bg:{filename}`    | `bg:hero-bg`           | CSS `background-image`                  |
+| Contained image    | `img:{filename}`       | `img:hero-product`         | `<img>` + `object-contain`             |
+| Background image   | `bg:{filename}`        | `bg:hero-bg`               | CSS `background-image`                 |
+| Composed image     | `img-group:{filename}` | `img-group:hero-composite` | `<img>` (group exported as single PNG) |
 | Link annotation    | `link:{target}`    | `link:checkout`        | `{{ 'checkout.html' | campaign_link }}` |
 | Variant property   | `breakpoint`       | `breakpoint=desktop`   | Responsive CSS breakpoint               |
 | Color style        | `brand/{name}`     | `brand/primary`        | `--brand-primary`                       |
@@ -766,7 +767,7 @@ Run: `npm run dev` → select campaign → `http://localhost:3000/{slug}/`
 - Width: Fill or fixed 1440px
 - All dynamic text uses component properties (snake_case)
 - All toggle elements use boolean properties (`show_*`)
-- All images named with `img:` prefix
+- All images named with `img:`, `bg:`, or `img-group:` prefix as appropriate
 - Colors reference Figma Color Styles (not hardcoded hex)
 - Typography references Figma Text Styles
 - Spacing values align to Tailwind scale (multiples of 4px)
