@@ -507,17 +507,17 @@ Use Tailwind utilities for layout (flex, grid, spacing, responsive) and custom C
 
 ## JavaScript Conventions
 
-JS is section-scoped. Each interactive section gets its own file.
+JS is section-scoped. Each interactive section gets its own file at `assets/js/{section-slug}-{type}.js`.
 
+Examples from existing sections:
 
-| Interaction         | JS File                    |
-| ------------------- | -------------------------- |
-| FAQ accordion       | `js/faq-accordion.js`      |
-| Testimonial slider  | `js/testimonial-slider.js` |
-| Countdown timer     | `js/countdown.js`          |
-| Before/after slider | `js/before-after.js`       |
-| Sticky bar          | `js/sticky-bar.js`         |
-| Video modal         | `js/video-modal.js`        |
+| Section             | JS File                                   |
+| ------------------- | ----------------------------------------- |
+| Accordion (FAQ)     | `assets/js/accordion.js`                  |
+| Testimonial slider  | `assets/js/testimonials-3-slider.js`      |
+| UGC slider          | `assets/js/ugc-1-slider.js`               |
+| Countdown timer     | `assets/js/countdown.js`                  |
+| Ingredients slider  | `assets/js/ingredients-4-slider.js`       |
 
 
 Use `data-*` attributes as JS hooks (never class names):
