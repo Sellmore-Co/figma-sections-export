@@ -430,6 +430,28 @@ The image is a **discrete visual element** — a product, person, illustration �
 
 ---
 
+#### Pattern 3 — `img-group:` Composed/Layered Hero (single exported image)
+
+Use this when the final visual is made from multiple layers (e.g. phone + badge + product + overlays) and must be exported as one canvas-rendered image.
+
+**Figma:** name the parent composition node `img-group:{filename}` (e.g. `img-group:bottomcta-hero`). This must be the top-level group/frame that contains all visual child layers. Do not point export at individual child image layers.
+
+**Code output:** `<img>` tag with a single asset path.
+
+```html
+<img src="{{ hero_image | campaign_asset }}" alt="{{ hero_image_alt }}">
+```
+
+**Asset export:** export the parent composition node ID (not child IDs):
+
+```bash
+./scripts/export-node.sh {img-group-node-id} src/{campaign}/assets/images/{filename}.png 2
+```
+
+**Rule:** if an image looks padded/offset/partial in code, the wrong node was exported. Re-export using the `img-group:` parent node.
+
+---
+
 #### Why not use the raw asset URL from `get_design_context`?
 
 The MCP returns the **original uploaded source file** — not what Figma renders on canvas. A designer can upload a 1500px wide image, crop it in the frame with offset positioning, and the raw asset URL still gives you the 1500px original. Always use `export-node.sh` to get the canvas-rendered version.
@@ -720,6 +742,7 @@ Run: `npm run dev` → select campaign → `http://localhost:3000/{slug}/`
 | Fixed column widths (`lg:w-[Npx]`)                                | Use `flex-1` — widths are 1440px reference only                                                                           |
 | Right padding on content column                                   | Move to the `max-w` container div                                                                                         |
 | Missing `max-w-[1440px] mx-auto` wrapper                          | Always required — this is what caps layout width                                                                          |
+| Large container side padding applied too early                    | For large values like `px-[240px]` or `px-[160px]`, prefer `xl:` over `lg:` unless Figma explicitly requires `lg`       |
 | `whitespace-nowrap` on body/bullet text                           | Only use on single-word UI labels                                                                                         |
 | Tailwind CDN in section partial                                   | CDN belongs in `_layouts/base.html` only                                                                                  |
 | CSS tokens defined inline                                         | Always a separate `css/tokens.css`, listed in frontmatter `styles:`                                                       |
