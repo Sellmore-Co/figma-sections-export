@@ -398,7 +398,7 @@ Dynamic images exposed as text property piped through `campaign_asset`:
 <img src="{{ background_image | campaign_asset }}" alt="{{ background_image_alt }}">
 ```
 
-### Two Image Patterns — Designer Must Choose One
+### Three Image Patterns — Designer Must Choose One
 
 Every section image falls into one of two patterns. The designer declares which pattern by using the correct layer naming prefix. There is no ambiguity — if the prefix isn't set correctly, the export will be wrong.
 
