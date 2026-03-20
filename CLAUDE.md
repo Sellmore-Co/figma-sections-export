@@ -145,7 +145,7 @@ Every Figma frame, component property, style, and naming convention maps 1:1 to 
 | Component Property (instance swap) | Nested include                 | `{% campaign_include '...' %}`          |
 | Variant Property                   | CSS class or responsive prefix | `md:flex-row`                           |
 | Color Style                        | CSS custom property            | `var(--brand-primary)`                  |
-| Typography Style                   | CSS class                      | `.heading-1`                            |
+| Typography Variable                | Responsive Tailwind classes    | `text-[18px] md:text-[20px] lg:text-[28px]` |
 | Auto Layout                        | Flex/Grid CSS                  | `flex flex-col gap-4`                   |
 | Image Fill                         | Asset + filter                 | `{{ 'images/x.jpg' | campaign_asset }}` |
 | Link annotation                    | Link + filter                  | `{{ 'page.html' | campaign_link }}`     |
@@ -348,20 +348,36 @@ Script compares mobile/desktop variants and generates responsive classes:
 | `state/error`        | `--state-error`     |
 
 
-### Typography (Figma Text Styles)
+### Typography (Figma Variables — not Text Styles)
 
+Figma Text Styles are **not used** in this file. Font sizes come from **Figma Variables** (`--font/size-*`). The variable name is consistent across breakpoints, but the fallback px value in each node reveals the responsive size for that breakpoint.
 
-| Style            | Size / Weight / Line Height  | CSS Class         |
-| ---------------- | ---------------------------- | ----------------- |
-| `text/display`   | 48px / 700 / 1.1             | `.text-display`   |
-| `text/heading-1` | 36px / 700 / 1.2             | `.text-heading-1` |
-| `text/heading-2` | 28px / 700 / 1.3             | `.text-heading-2` |
-| `text/heading-3` | 22px / 600 / 1.4             | `.text-heading-3` |
-| `text/body-lg`   | 18px / 400 / 1.7             | `.text-body-lg`   |
-| `text/body`      | 16px / 400 / 1.7             | `.text-body`      |
-| `text/body-sm`   | 14px / 400 / 1.6             | `.text-body-sm`   |
-| `text/caption`   | 12px / 500 / 1.5             | `.text-caption`   |
-| `text/overline`  | 12px / 700 / 1.5 / uppercase | `.text-overline`  |
+**How `get_design_context` surfaces this:**
+```
+text-[length:var(--font/size-heading2,40px)]   ← desktop node fallback
+text-[length:var(--font/size-heading2,32px)]   ← tablet node fallback
+text-[length:var(--font/size-heading2,28px)]   ← mobile node fallback
+```
+
+**Read the three fallback values → generate responsive Tailwind classes:**
+
+| Figma Variable           | Mobile | Tablet | Desktop | Tailwind output                              |
+| ------------------------ | ------ | ------ | ------- | -------------------------------------------- |
+| `--font/size-heading1`   | 32px   | 36px   | 44px    | `text-[32px] md:text-[36px] lg:text-[44px]` |
+| `--font/size-heading2`   | 28px   | 32px   | 40px    | `text-[28px] md:text-[32px] lg:text-[40px]` |
+| `--font/size-heading3`   | 24px   | 26px   | 28px    | `text-[24px] md:text-[26px] lg:text-[28px]` |
+| `--font/size-p-large`    | 20px   | 20px   | 24px    | `text-[20px] lg:text-[24px]`                 |
+| `--font/size-p-big`      | 18px   | 20px   | 20px    | `text-[18px] md:text-[20px]`                 |
+| `--font/size-p-medium`   | 16px   | 18px   | 18px    | `text-[16px] md:text-[18px]`                 |
+| `--font/size-p-small`    | 14px   | 14px   | 16px    | `text-[14px] lg:text-[16px]`                 |
+| `--font/size-p-tiny`     | 12px   | 12px   | 14px    | `text-[12px] lg:text-[14px]`                 |
+
+Font weight and family are inlined per element — there is no shared text style. Read them directly from the MCP output (e.g. `font-bold`, `font-semibold`, `font-['Plus_Jakarta_Sans:Bold',sans-serif]`).
+
+**Rules:**
+- If a font size is the same across all three breakpoints, emit a single class with no prefix.
+- Only add `md:` / `lg:` prefixes where the fallback value actually changes.
+- Read fallback values from **section content nodes**, not from shared components (e.g. the CTA component always outputs desktop fallbacks regardless of breakpoint).
 
 
 ---
@@ -769,7 +785,7 @@ Run: `npm run dev` → select campaign → `http://localhost:3000/{slug}/`
 - All toggle elements use boolean properties (`show_*`)
 - All images named with `img:`, `bg:`, or `img-group:` prefix as appropriate
 - Colors reference Figma Color Styles (not hardcoded hex)
-- Typography references Figma Text Styles
+- Typography font sizes come from Figma Variables (`--font/size-*`) — read fallback px values from each breakpoint node to determine responsive sizes
 - Spacing values align to Tailwind scale (multiples of 4px)
 - Description contains valid JSON metadata block
 - Desktop + mobile breakpoint variants defined
