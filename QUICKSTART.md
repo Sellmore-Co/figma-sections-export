@@ -1,6 +1,20 @@
 # Quickstart
 
-Export Figma sections to production-ready Liquid partials for `next-campaign-page-kit`.
+Export sections from any Figma file built on the Sellmore design framework to production-ready Liquid partials for `next-campaign-page-kit`.
+
+---
+
+## Before you start — check your Figma file
+
+This tool works with any Figma file that follows the Sellmore design framework. Open your file and confirm:
+
+- There is a **Sections** page
+- Section frames are named `section/{kebab-case}` (e.g. `section/hero-banner`)
+- Each section has a **`breakpoint` variant** with desktop, tablet, and mobile frames
+- Component properties use `snake_case` for text (`headline_text`) and `show_*` for booleans (`show_badge`)
+- Image layers are prefixed `img:`, `bg:`, or `img-group:`
+
+If you're working from the [Debranded Sections](https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/Debranded-Sections) master file or a client file branched from it, you're set.
 
 ---
 
@@ -41,33 +55,36 @@ Make sure the Figma MCP plugin is active — you'll see it listed in the availab
 
 ---
 
-## 4. In Figma, copy links for your 3 breakpoint frames
+## 4. In Figma, find your section's 3 breakpoint frames
 
-For each variant (desktop, tablet, mobile) click the frame on the canvas and press **Cmd+L** (Mac) or **Ctrl+L** (Windows) to copy the link.
+Go to the **Sections** page of your Figma file. Find the section you want to export — it will have three variant frames: desktop, tablet, and mobile.
 
-You'll end up with 3 URLs like:
+Click each frame and press **Cmd+L** (Mac) or **Ctrl+L** (Windows) to copy its link. You'll end up with 3 URLs from your file:
+
 ```
-https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/...?node-id=143-10518
-https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/...?node-id=143-10610
-https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/...?node-id=143-12936
+https://www.figma.com/design/{your-file-key}/...?node-id=XXX-XXXX   ← desktop
+https://www.figma.com/design/{your-file-key}/...?node-id=XXX-XXXX   ← tablet
+https://www.figma.com/design/{your-file-key}/...?node-id=XXX-XXXX   ← mobile
 ```
 
 ---
 
-## 5. Paste the 3 links into Claude Code
+## 5. Choose a slug and paste the links into Claude Code
+
+The **slug** is a short kebab-case name you choose — it becomes the campaign folder (`src/{slug}/`) and the preview URL (`localhost:3000/{slug}/`). Use the section name or a descriptive label.
 
 ```
-Export this section:
-https://www.figma.com/design/{fileKey}/...?node-id=XXX-XXXX
-https://www.figma.com/design/{fileKey}/...?node-id=XXX-XXXX
-https://www.figma.com/design/{fileKey}/...?node-id=XXX-XXXX
+Export this section as hero-banner:
+https://www.figma.com/design/{your-file-key}/...?node-id=XXX-XXXX
+https://www.figma.com/design/{your-file-key}/...?node-id=XXX-XXXX
+https://www.figma.com/design/{your-file-key}/...?node-id=XXX-XXXX
 ```
 
 Claude will:
 - Fetch all 3 breakpoints in parallel
-- Save reference screenshots to `src/{campaign}/_ref/`
-- Generate a responsive Liquid partial in `src/{campaign}/_includes/`
-- Download all Figma assets (icons, images) to `src/{campaign}/assets/images/`
+- Save reference screenshots to `src/{slug}/_ref/`
+- Generate a responsive Liquid partial in `src/{slug}/_includes/`
+- Download all Figma assets (icons, images) to `src/{slug}/assets/images/`
 - Set up the preview campaign
 
 ---
@@ -78,7 +95,7 @@ Claude will:
 npm run dev
 ```
 
-Select your campaign from the list → browser opens at `http://localhost:3000/{campaign-slug}/` with live reload.
+Select your campaign from the list → browser opens at `http://localhost:3000/{slug}/` with live reload.
 
 ---
 
@@ -86,8 +103,8 @@ Select your campaign from the list → browser opens at `http://localhost:3000/{
 
 | File | Purpose |
 |---|---|
-| `src/{campaign}/_includes/{section}.html` | Liquid partial — drop into any campaign |
-| `src/{campaign}/assets/css/tokens.css` | CSS custom properties for design tokens |
-| `src/{campaign}/assets/images/` | Exported Figma assets |
-| `src/{campaign}/_ref/` | Reference screenshots per breakpoint (local only) |
-| `src/{campaign}/index.html` | Preview page |
+| `src/{slug}/_includes/{section}.html` | Liquid partial — drop into any campaign |
+| `src/{slug}/assets/css/tokens.css` | CSS custom properties for design tokens |
+| `src/{slug}/assets/images/` | Exported Figma assets |
+| `src/{slug}/_ref/` | Reference screenshots per breakpoint (local only) |
+| `src/{slug}/index.html` | Preview page |
