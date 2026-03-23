@@ -4,8 +4,9 @@ Export sections from any Figma file built on the Sellmore design framework to pr
 
 ---
 
-## Before you start — check your Figma file
+## Before you start
 
+**Check your Figma file is compatible.**
 This tool works with any Figma file that follows the Sellmore design framework. Open your file and confirm:
 
 - There is a **Sections** page
@@ -15,6 +16,19 @@ This tool works with any Figma file that follows the Sellmore design framework. 
 - Image layers are prefixed `img:`, `bg:`, or `img-group:`
 
 If you're working from the [Debranded Sections](https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/Debranded-Sections) master file or a client file branched from it, you're set.
+
+**Choose a slug for the landing page.**
+The slug is a short kebab-case name for the whole page — not per section. All sections from that page will live inside it. Pick it once and use it for every export on this page.
+
+```
+src/{slug}/
+  _includes/
+    hero.html       ← each section added here
+    benefits.html
+    faq.html
+  index.html        ← assembles all sections in order
+  assets/
+```
 
 ---
 
@@ -39,8 +53,6 @@ Open `.env` and paste your Figma personal access token.
 Get one at: **Figma → Account Settings → Personal Access Tokens → Generate new token**
 Scopes needed: **File content** (read) + **File metadata** (read).
 
-This token is used to download reference screenshots of each section at each breakpoint.
-
 ---
 
 ## 3. Open Claude Code
@@ -55,26 +67,29 @@ Make sure the Figma MCP plugin is active — you'll see it listed in the availab
 
 ---
 
-## 4. In Figma, find your section's 3 breakpoint frames
+## 4. In Figma, find the section's 3 breakpoint frames
 
 Go to the **Sections** page of your Figma file. Find the section you want to export — it will have three variant frames: desktop, tablet, and mobile.
 
-Click each frame and press **Cmd+L** (Mac) or **Ctrl+L** (Windows) to copy its link. You'll end up with 3 URLs from your file:
+Click each frame and press **Cmd+L** (Mac) or **Ctrl+L** (Windows) to copy its link.
+
+---
+
+## 5. Paste the links into Claude Code
+
+Always tell Claude the slug and section name. For the first section:
 
 ```
+Export this as the hero section in novaburn-presale:
 https://www.figma.com/design/{your-file-key}/...?node-id=XXX-XXXX   ← desktop
 https://www.figma.com/design/{your-file-key}/...?node-id=XXX-XXXX   ← tablet
 https://www.figma.com/design/{your-file-key}/...?node-id=XXX-XXXX   ← mobile
 ```
 
----
-
-## 5. Choose a slug and paste the links into Claude Code
-
-The **slug** is a short kebab-case name you choose — it becomes the campaign folder (`src/{slug}/`) and the preview URL (`localhost:3000/{slug}/`). Use the section name or a descriptive label.
+For every section after that, use the same slug:
 
 ```
-Export this section as hero-banner:
+Add this as the faq section to novaburn-presale:
 https://www.figma.com/design/{your-file-key}/...?node-id=XXX-XXXX
 https://www.figma.com/design/{your-file-key}/...?node-id=XXX-XXXX
 https://www.figma.com/design/{your-file-key}/...?node-id=XXX-XXXX
@@ -85,7 +100,7 @@ Claude will:
 - Save reference screenshots to `src/{slug}/_ref/`
 - Generate a responsive Liquid partial in `src/{slug}/_includes/`
 - Download all Figma assets (icons, images) to `src/{slug}/assets/images/`
-- Set up the preview campaign
+- Append the section to `src/{slug}/index.html`
 
 ---
 
@@ -95,7 +110,7 @@ Claude will:
 npm run dev
 ```
 
-Select your campaign from the list → browser opens at `http://localhost:3000/{slug}/` with live reload.
+Select your campaign from the list → browser opens at `http://localhost:3000/{slug}/` with live reload. Re-run after each new section to see the page grow.
 
 ---
 
@@ -103,8 +118,8 @@ Select your campaign from the list → browser opens at `http://localhost:3000/{
 
 | File | Purpose |
 |---|---|
-| `src/{slug}/_includes/{section}.html` | Liquid partial — drop into any campaign |
+| `src/{slug}/_includes/{section}.html` | Liquid partial for one section |
 | `src/{slug}/assets/css/tokens.css` | CSS custom properties for design tokens |
 | `src/{slug}/assets/images/` | Exported Figma assets |
 | `src/{slug}/_ref/` | Reference screenshots per breakpoint (local only) |
-| `src/{slug}/index.html` | Preview page |
+| `src/{slug}/index.html` | Preview page — includes all exported sections in order |

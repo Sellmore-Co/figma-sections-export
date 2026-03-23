@@ -6,6 +6,26 @@ Each section is fetched at three breakpoints (desktop, tablet, mobile) via the F
 
 ---
 
+## How it works
+
+A landing page is made up of multiple sections (hero, FAQ, CTA, etc.). You export them one at a time — AI handles one section reliably; a whole page at once is too much.
+
+All sections from the same page share one **slug** — a short kebab-case name you choose for the campaign (e.g. `novaburn-presale`). Each exported section becomes a partial inside that slug's `_includes/` folder. The slug's `index.html` assembles them in order.
+
+```
+src/novaburn-presale/
+  _includes/
+    hero.html        ← exported first
+    benefits.html    ← exported second
+    faq.html         ← exported third
+  index.html         ← includes all three in order
+  assets/
+    css/tokens.css
+    images/
+```
+
+---
+
 ## Compatible Figma files
 
 This tool works with any Figma file that follows the Sellmore design framework conventions. Before starting, confirm your file has:
@@ -49,15 +69,23 @@ claude mcp add --name figma https://mcp.figma.com/mcp
 ```
 Then restart Claude Code. You'll know it's working when Claude can call `get_design_context` and return a live screenshot directly from a Figma URL.
 
-**4. Copy 3 Figma links** (desktop, tablet, mobile) with **Cmd+L** on each frame, then tell Claude the slug and paste the links:
+**4. Choose a slug for the page, then export sections one at a time**
+
+Pick a slug for the whole landing page. Then for each section, copy 3 Figma links (desktop, tablet, mobile) with **Cmd+L** and tell Claude the slug and section name:
 ```
-Export this section as hero-banner:
+Export this as the hero section in novaburn-presale:
 https://www.figma.com/design/{fileKey}/...?node-id=XXX-XXXX
 https://www.figma.com/design/{fileKey}/...?node-id=XXX-XXXX
 https://www.figma.com/design/{fileKey}/...?node-id=XXX-XXXX
 ```
 
-The slug (`hero-banner`) becomes the campaign folder name and URL path for previewing.
+Each subsequent section goes into the same slug:
+```
+Add this as the faq section to novaburn-presale:
+https://www.figma.com/design/{fileKey}/...?node-id=XXX-XXXX
+https://www.figma.com/design/{fileKey}/...?node-id=XXX-XXXX
+https://www.figma.com/design/{fileKey}/...?node-id=XXX-XXXX
+```
 
 **5. Preview**
 ```bash
@@ -72,10 +100,11 @@ npm run dev
 
 | File | Purpose |
 |---|---|
-| `src/{slug}/_includes/{section}.html` | Liquid partial — drop into any campaign |
+| `src/{slug}/_includes/{section}.html` | Liquid partial for one section |
 | `src/{slug}/assets/css/tokens.css` | CSS custom properties for design tokens |
 | `src/{slug}/assets/images/` | Exported Figma assets |
 | `src/{slug}/_ref/` | Reference screenshots per breakpoint (local only) |
+| `src/{slug}/index.html` | Preview page — includes all exported sections |
 
 ---
 
