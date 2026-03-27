@@ -32,7 +32,7 @@ This tool works with any Figma file that follows the Sellmore design framework c
 
 - A **Sections** page with section frames named `section/{kebab-case}` (e.g. `section/hero-banner`)
 - Each section has a **`breakpoint` variant** with desktop, tablet, and mobile frames
-- Component properties use `snake_case` for text and `show_*` for booleans
+- Component properties use `snake_case` for text
 - Image layers are prefixed `img:`, `bg:`, or `img-group:`
 
 If you're working from the [Debranded Sections](https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/Debranded-Sections) master file or a file branched from it, you're good to go.
@@ -114,6 +114,7 @@ npm run dev
 |---|---|
 | `scripts/save-ref.sh` | Download reference screenshots for each breakpoint |
 | `scripts/export-node.sh` | Export a Figma node as canvas-rendered PNG (respects crop/frame) |
+| `npm run compare <slug>` | Generate a Figma vs live comparison page at all 3 breakpoints |
 
 ---
 
@@ -121,4 +122,3 @@ npm run dev
 
 - [QUICKSTART.md](./QUICKSTART.md) — setup and first export
 - [CLAUDE.md](./CLAUDE.md) — full export process, design contract, naming conventions
-- [figma-design-framework-spec.html](./figma-design-framework-spec.html) — complete framework specification

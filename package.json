@@ -13,9 +13,10 @@
     "compress": "campaign-compress",
     "compress:preview": "campaign-compress --preview",
     "migrate": "campaign-migrate",
-    "new": "bash scripts/new-section.sh"
+    "new": "bash scripts/new-section.sh",
+    "compare": "node scripts/compare-ref.js"
   },
   "dependencies": {
-    "next-campaign-page-kit": "latest"
+    "next-campaign-page-kit": "^0.0.9"
   }
 }

@@ -4,6 +4,8 @@ This repo builds an export script that reads a Figma file via the REST API and g
 
 **Figma file:** [https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/Debranded-Sections](https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/Debranded-Sections)
 
+**Reference implementation:** [https://github.com/NextCommerceCo/campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections) — canonical example of exported section partials, asset structure, JS conventions, and page composition. When in doubt about how an export should look, refer to this repo.
+
 ---
 
 ## Getting Started
@@ -99,20 +101,24 @@ Select your campaign from the list → opens `http://localhost:3000/{campaign-sl
 
 ---
 
-## Scaffolding New Sections
+## Intended Workflow
 
-When the user says anything like "create a new slug called X" or "create a new section called Y" or "add a section Y to slug X", run:
+This tool exports Figma sections as Liquid partials (`_includes/*.html`) that are assembled into a landing or presell page. The **unit of export is always a single section** — exporting section by section produces better results than attempting a full-page export in one pass.
 
-```bash
-npm run new <slug> <section-name>
-```
+**Production page workflow:**
 
-- If the slug doesn't exist yet, this creates the full campaign structure + first section.
-- If the slug already exists, this adds the new section partial and appends it to `index.html`.
+1. Dev has a Figma landing/presell page built from the unbranded section templates
+2. Identifies the sections on the page (e.g. hero, features, FAQ, footer)
+3. Exports each section one at a time as `_includes/{section}.html`
+4. A page file (any name — `presale.html`, `landing.html`, etc.) assembles them via `campaign_include` tags — a slug can contain multiple page files
 
-Examples:
-- "create a new slug called hero-7 with a section called hero-7" → `npm run new hero-7 hero-7`
-- "add a section hero-7-features to hero-7" → `npm run new hero-7 hero-7-features`
+What matters is consistent scoping:
+
+- Includes: `_includes/{section-name}.html`
+- Images: `images/{section-name}/{filename}`
+- JS: all in `assets/js/landing.js`
+
+**Note for Claude:** The current `src/` directory contains one slug per section — this is local testing only, not the intended workflow. Ignore this structure when guiding developers. Always direct developers toward the page-level workflow above.
 
 ---
 
@@ -136,64 +142,30 @@ Every Figma frame, component property, style, and naming convention maps 1:1 to 
 ## Output Mapping
 
 
-| Figma Concept                      | Framework Output               | Location                                |
-| ---------------------------------- | ------------------------------ | --------------------------------------- |
-| Section Frame                      | Liquid partial                 | `_includes/{name}.html`                 |
-| Atomic Component                   | Nested partial                 | `_includes/_components/{name}.html`     |
-| Component Property (text)          | Liquid variable                | `{{ variable_name }}`                   |
-| Component Property (boolean)       | Liquid conditional             | `{% if show_badge %}...{% endif %}`     |
-| Component Property (instance swap) | Nested include                 | `{% campaign_include '...' %}`          |
-| Variant Property                   | CSS class or responsive prefix | `md:flex-row`                           |
-| Color Style                        | CSS custom property            | `var(--brand-primary)`                  |
-| Typography Variable                | Responsive Tailwind classes    | `text-[18px] md:text-[20px] lg:text-[28px]` |
-| Auto Layout                        | Flex/Grid CSS                  | `flex flex-col gap-4`                   |
-| Image Fill                         | Asset + filter                 | `{{ 'images/x.jpg' | campaign_asset }}` |
-| Link annotation                    | Link + filter                  | `{{ 'page.html' | campaign_link }}`     |
-| Page Frame                         | Page HTML + frontmatter        | `presale.html`                          |
+| Figma Concept             | Framework Output               | Location                                    |
+| ------------------------- | ------------------------------ | ------------------------------------------- |
+| Section Frame             | Liquid partial                 | `_includes/{name}.html`                     |
+| Component Property (text) | Liquid variable                | `{{ variable_name }}`                       |
+| Color Style               | CSS custom property            | `var(--brand-primary)`                      |
+| Typography Variable       | Responsive Tailwind classes    | `text-[18px] md:text-[20px] lg:text-[28px]` |
+| Auto Layout               | Flex/Grid CSS                  | `flex flex-col gap-4`                       |
+| Image Fill                | Asset + filter                 | `{{ 'images/x.jpg'                          |
+| Page Frame                | Page HTML + frontmatter        | `presale.html`                              |
 
-
----
-
-## Figma File Structure
-
-```
-Figma File: "Debranded Sections"
-├── Tokens        — Colors, typography, spacing, effects
-├── Components    — Atomic/reusable components (buttons, badges, inputs)
-├── Sections      — Exportable section components (ONLY THIS PAGE IS EXPORTED)
-├── Pages         — Assembled page compositions (reference only)
-└── Sandbox       — Experiments (not exported)
-```
 
 ---
 
 ## Naming Conventions (the contract)
 
 
-| Figma Element      | Convention         | Example                | Maps To                                 |
-| ------------------ | ------------------ | ---------------------- | --------------------------------------- |
-| Section frame      | `section/{name}`   | `section/hero-banner`  | `_includes/hero-banner.html`            |
-| Atomic component   | `component/{name}` | `component/cta-button` | `_includes/_components/cta-button.html` |
-| Component property | `snake_case`       | `headline_text`        | `{{ headline_text }}`                   |
-| Boolean property   | `show_{element}`   | `show_badge`           | `{% if show_badge %}`                   |
+| Figma Element      | Convention             | Example                    | Maps To                                |
+| ------------------ | ---------------------- | -------------------------- | -------------------------------------- |
+| Section frame      | `section/{name}`       | `section/hero-banner`      | `_includes/hero-banner.html`           |
+| Component property | `snake_case`           | `headline_text`            | `{{ headline_text }}`                  |
 | Contained image    | `img:{filename}`       | `img:hero-product`         | `<img>` + `object-contain`             |
 | Background image   | `bg:{filename}`        | `bg:hero-bg`               | CSS `background-image`                 |
 | Composed image     | `img-group:{filename}` | `img-group:hero-composite` | `<img>` (group exported as single PNG) |
-| Link annotation    | `link:{target}`    | `link:checkout`        | `{{ 'checkout.html' | campaign_link }}` |
-| Variant property   | `breakpoint`       | `breakpoint=desktop`   | Responsive CSS breakpoint               |
-| Color style        | `brand/{name}`     | `brand/primary`        | `--brand-primary`                       |
-| Typography style   | `text/{role}`      | `text/heading-1`       | `.text-heading-1`                       |
-
-
-### Frame Name Prefixes
-
-
-| Prefix           | Behavior                                                         |
-| ---------------- | ---------------------------------------------------------------- |
-| `section/`       | Exported as standalone Liquid partial in `_includes/`            |
-| `component/`     | Exported as reusable sub-partial in `_includes/_components/`     |
-| `page/`          | Defines page composition order and frontmatter (Pages page only) |
-| `_` (underscore) | Ignored by export script                                         |
+| Color style        | `brand/{name}`         | `brand/primary`            | `--brand-primary`                      |
 
 
 ---
@@ -209,36 +181,16 @@ Figma File: "Debranded Sections"
 | Width: Fill container or fixed 1440px    | Required    |
 | `breakpoint` variant (desktop + mobile)  | Recommended |
 | Component properties for dynamic content | Required    |
-| Description field contains metadata JSON | Recommended |
-
-
-### Section Description Metadata (JSON in description field)
-
-```json
-{
-  "section_id": "hero-banner",
-  "category": "hero",
-  "scripts": [],
-  "styles": ["css/sections.css"],
-  "wrapper_tag": "section",
-  "wrapper_class": "section-hero",
-  "container": true
-}
-```
-
-Categories: `hero`, `content`, `cta`, `social-proof`, `faq`, `footer`
 
 ---
 
 ## Component Properties → Liquid Variables
 
 
-| Figma Property Type | Liquid Output                              |
-| ------------------- | ------------------------------------------ |
-| Text                | `{{ headline }}`                           |
-| Boolean             | `{% if show_badge %} ... {% endif %}`      |
-| Instance Swap       | `{% campaign_include '_components/...' %}` |
-| Variant             | `class="section--{{ variant }}"`           |
+| Figma Property Type | Liquid Output                                               |
+| ------------------- | ----------------------------------------------------------- |
+| Text                | `{{ headline }}`                                            |
+| Instance Swap       | Inline the component HTML directly into the section partial |
 
 
 All properties use `snake_case`. Spaces in Figma property names are converted: `Headline Text` → `headline_text`.
@@ -250,23 +202,26 @@ All properties use `snake_case`. Spaces in Figma property names are converted: `
 `**campaign_asset**` — resolves relative paths to campaign directory:
 
 ```liquid
-{{ 'images/hero.jpg' | campaign_asset }}  → /campaign-slug/images/hero.jpg
-{{ 'css/global.css' | campaign_asset }}   → /campaign-slug/css/global.css
+{{ 'images/hero-1/hero-photo.png' | campaign_asset }}  → /campaign-slug/images/hero-1/hero-photo.png
+{{ 'css/tokens.css' | campaign_asset }}                → /campaign-slug/css/tokens.css
 ```
 
-`**campaign_link**` — generates clean internal URLs:
+**Images are namespaced by section slug**: `images/{section-slug}/{filename}`. Never place images in a flat `images/` root. Shared assets used across sections go in `images/_shared/`.
+
+`**campaign_link`** — generates clean internal URLs:
 
 ```liquid
 {{ 'checkout.html' | campaign_link }}  → /campaign-slug/checkout/
 {{ '#pricing' | campaign_link }}       → #pricing (anchors pass through)
 ```
 
-`**campaign_include**` — renders a partial with named args:
+`**campaign_include**` — renders a partial from `_includes/`:
 
 ```liquid
-{% campaign_include 'hero-banner.html' headline="Welcome" cta_text="Buy Now" %}
-{% campaign_include '_components/cta-button.html' text=btn_text url=btn_url %}
+{% campaign_include 'hero-banner.html' %}
 ```
+
+**Sections do not receive inline arguments.** All content variables are defined in the page's YAML frontmatter and read directly by the partial. Namespace variables by section to avoid collisions: `hero_1_headline`, `benefits_1_heading`, etc.
 
 ---
 
@@ -343,16 +298,17 @@ Script compares mobile/desktop variants and generates responsive classes:
 | `text/secondary`     | `--text-secondary`  |
 | `text/inverse`       | `--text-inverse`    |
 | `border/default`     | `--border-default`  |
-| `state/success`      | `--state-success`   |
-| `state/warning`      | `--state-warning`   |
-| `state/error`        | `--state-error`     |
+| `state/success`      | `--success`         |
+| `state/warning`      | `--warning`         |
+| `state/error`        | `--error`           |
 
 
 ### Typography (Figma Variables — not Text Styles)
 
-Figma Text Styles are **not used** in this file. Font sizes come from **Figma Variables** (`--font/size-*`). The variable name is consistent across breakpoints, but the fallback px value in each node reveals the responsive size for that breakpoint.
+Figma Text Styles are **not used** in this file. Font sizes come from **Figma Variables** (`--font/size-`*). The variable name is consistent across breakpoints, but the fallback px value in each node reveals the responsive size for that breakpoint.
 
 **How `get_design_context` surfaces this:**
+
 ```
 text-[length:var(--font/size-heading2,40px)]   ← desktop node fallback
 text-[length:var(--font/size-heading2,32px)]   ← tablet node fallback
@@ -361,24 +317,26 @@ text-[length:var(--font/size-heading2,28px)]   ← mobile node fallback
 
 **Read the three fallback values → generate responsive Tailwind classes:**
 
-| Figma Variable           | Mobile | Tablet | Desktop | Tailwind output                              |
-| ------------------------ | ------ | ------ | ------- | -------------------------------------------- |
-| `--font/size-heading1`   | 32px   | 36px   | 44px    | `text-[32px] md:text-[36px] lg:text-[44px]` |
-| `--font/size-heading2`   | 28px   | 32px   | 40px    | `text-[28px] md:text-[32px] lg:text-[40px]` |
-| `--font/size-heading3`   | 24px   | 26px   | 28px    | `text-[24px] md:text-[26px] lg:text-[28px]` |
-| `--font/size-p-large`    | 20px   | 20px   | 24px    | `text-[20px] lg:text-[24px]`                 |
-| `--font/size-p-big`      | 18px   | 20px   | 20px    | `text-[18px] md:text-[20px]`                 |
-| `--font/size-p-medium`   | 16px   | 18px   | 18px    | `text-[16px] md:text-[18px]`                 |
-| `--font/size-p-small`    | 14px   | 14px   | 16px    | `text-[14px] lg:text-[16px]`                 |
-| `--font/size-p-tiny`     | 12px   | 12px   | 14px    | `text-[12px] lg:text-[14px]`                 |
+
+| Figma Variable         | Mobile | Tablet | Desktop | Tailwind output                             |
+| ---------------------- | ------ | ------ | ------- | ------------------------------------------- |
+| `--font/size-heading1` | 32px   | 36px   | 44px    | `text-[32px] md:text-[36px] lg:text-[44px]` |
+| `--font/size-heading2` | 28px   | 32px   | 40px    | `text-[28px] md:text-[32px] lg:text-[40px]` |
+| `--font/size-heading3` | 24px   | 26px   | 28px    | `text-[24px] md:text-[26px] lg:text-[28px]` |
+| `--font/size-p-large`  | 20px   | 20px   | 24px    | `text-[20px] lg:text-[24px]`                |
+| `--font/size-p-big`    | 18px   | 20px   | 20px    | `text-[18px] md:text-[20px]`                |
+| `--font/size-p-medium` | 16px   | 18px   | 18px    | `text-[16px] md:text-[18px]`                |
+| `--font/size-p-small`  | 14px   | 14px   | 16px    | `text-[14px] lg:text-[16px]`                |
+| `--font/size-p-tiny`   | 12px   | 12px   | 14px    | `text-[12px] lg:text-[14px]`                |
+
 
 Font weight and family are inlined per element — there is no shared text style. Read them directly from the MCP output (e.g. `font-bold`, `font-semibold`, `font-['Plus_Jakarta_Sans:Bold',sans-serif]`).
 
 **Rules:**
+
 - If a font size is the same across all three breakpoints, emit a single class with no prefix.
 - Only add `md:` / `lg:` prefixes where the fallback value actually changes.
 - Read fallback values from **section content nodes**, not from shared components (e.g. the CTA component always outputs desktop fallbacks regardless of breakpoint).
-
 
 ---
 
@@ -507,25 +465,36 @@ Use Tailwind utilities for layout (flex, grid, spacing, responsive) and custom C
 
 ## JavaScript Conventions
 
-JS is section-scoped. Each interactive section gets its own file at `assets/js/{section-slug}-{type}.js`.
+All interactivity is powered by a **single unified file**: `assets/js/landing.js`. Do not create per-section JS files. New interactive patterns must be added to `landing.js` using data attributes as the hook contract.
 
-Examples from existing sections:
-
-| Section             | JS File                                   |
-| ------------------- | ----------------------------------------- |
-| Accordion (FAQ)     | `assets/js/accordion.js`                  |
-| Testimonial slider  | `assets/js/testimonials-3-slider.js`      |
-| UGC slider          | `assets/js/ugc-1-slider.js`               |
-| Countdown timer     | `assets/js/countdown.js`                  |
-| Ingredients slider  | `assets/js/ingredients-4-slider.js`       |
-
-
-Use `data-*` attributes as JS hooks (never class names):
+**Carousel/slider sections use Swiper** (loaded via `base.html`). Configure via data attributes on the root element:
 
 ```html
-<div data-faq-item data-open="false">
-  <button data-faq-toggle>{{ question }}</button>
-  <div data-faq-answer style="max-height: 0; overflow: hidden;">{{ answer }}</div>
+<div data-swiper-root
+     data-slides="1.1" data-slides-md="2" data-slides-lg="3"
+     data-gap="16" data-gap-md="24" data-gap-lg="32"
+     data-loop="true">
+  <div class="swiper-wrapper">...</div>
+</div>
+```
+
+Use `data-*` attributes as JS hooks — never class names:
+
+```html
+<div data-accordion data-allow-multiple="false">
+  <div data-accordion-item data-open="false">
+    <button data-accordion-toggle>{{ question }}</button>
+    <div data-accordion-panel>{{ answer }}</div>
+    <span data-accordion-icon></span>
+  </div>
+</div>
+```
+
+**Countdown timer:**
+
+```html
+<div data-countdown data-duration-minutes="15" data-storage-key="{{ section_id }}-timer">
+  ...
 </div>
 ```
 
@@ -603,10 +572,9 @@ Use `data-*` attributes as JS hooks (never class names):
       "category": "hero",
       "file": "_includes/hero-banner.html",
       "properties": [
-        { "name": "headline", "type": "text", "default": "Your Headline" },
+        { "name": "headline", "type": "text" },
         { "name": "cta_url", "type": "link", "filter": "campaign_link" },
-        { "name": "background_image", "type": "image", "filter": "campaign_asset" },
-        { "name": "show_badge", "type": "boolean", "default": true }
+        { "name": "background_image", "type": "image", "filter": "campaign_asset" }
       ],
       "styles": ["css/sections.css"],
       "scripts": [],
@@ -686,24 +654,26 @@ When mobile layout reorders elements (e.g. heading above image, image above cont
 
 ### Step 5 — Save reference screenshots
 
-Save a PNG of each breakpoint node for visual reference during HTML authoring and future review. These live in `src/{campaign}/_ref/` (gitignored — local only).
+Download a PNG of each breakpoint node into `src/{slug}/_ref/`. These are used by the compare tool in Step 8 — without them the left side of the compare page will be empty.
 
 ```bash
-./scripts/save-ref.sh section-preview hero-2 143:10703 143:10748 143:13028
+./scripts/save-ref.sh <slug> <section-name> <desktop-node-id> <tablet-node-id> <mobile-node-id>
+```
+
+Example:
+```bash
+./scripts/save-ref.sh novaburn-presale hero 143:10703 143:10748 143:13028
 ```
 
 Requires `FIGMA_ACCESS_TOKEN` in a `.env` file (copy `.env.example` → `.env`). Get your token from Figma → Account Settings → Personal Access Tokens.
 
 Output:
-
 ```
-src/{campaign}/_ref/
-  hero-2-desktop.png
-  hero-2-tablet.png
-  hero-2-mobile.png
+src/novaburn-presale/_ref/
+  hero-desktop.png
+  hero-tablet.png
+  hero-mobile.png
 ```
-
-Use these images when writing HTML to compare the output against the Figma design at each breakpoint.
 
 ---
 
@@ -732,6 +702,12 @@ mv hero-photo.tmp hero-photo.png
 
 **Rule:** Figma MCP always returns SVG for vector assets (icons, badges, illustrations) and PNG/JPG for raster images. Saving a vector as `.png` causes it to silently not render in the browser.
 
+**Rule:** After saving any `.svg` file, fix the `preserveAspectRatio` attribute — Figma always exports `preserveAspectRatio="none"` which causes distortion. Change it to `xMidYMid meet`:
+
+```bash
+sed -i '' 's/preserveAspectRatio="none"/preserveAspectRatio="xMidYMid meet"/g' assets/images/*.svg
+```
+
 ```bash
 # Photo assets — export manually from Figma (right-click frame → Export)
 # Image fills don't surface as URLs in get_design_context output
@@ -751,26 +727,55 @@ src/{campaign-slug}/
 
 Run: `npm run dev` → select campaign → `http://localhost:3000/{slug}/`
 
+### Step 8 — Compare against Figma refs
+
+Generate a side-by-side compare page (Figma screenshot vs live iframe):
+
+```bash
+npm run compare <slug>
+open src/<slug>/_ref/compare.html
+```
+
+Requires Figma ref images from Step 5. The compare page shows the Figma PNG on the left and the live dev server in an iframe on the right, at all 3 breakpoints. The iframe updates live as you edit HTML — no re-run needed.
+
+**Keyboard shortcuts:** `D` / `T` / `M` — switch breakpoint
+
+**Refinement loop:** edit `_includes/{section}.html` → save → refresh `compare.html` → spot differences → repeat until it matches.
+
+### After every export — auto-open the compare tool
+
+At the end of every section export, automatically run these three commands. The node IDs are already known from the Figma URLs provided at the start — extract them and use them directly.
+
+```bash
+./scripts/save-ref.sh <slug> <section> <desktop-node-id> <tablet-node-id> <mobile-node-id>
+npm run compare <slug>
+open src/<slug>/_ref/compare.html
+```
+
+Node ID format: take the `node-id` query param from the Figma URL and replace `-` with `:` (e.g. `143-10703` → `143:10703`).
+
+This opens the compare page immediately — the developer just needs `npm run dev` running to see the live iframe.
+
 ### Common mistakes
 
 
-| Mistake                                                           | Fix                                                                                                                       |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Fixed column widths (`lg:w-[Npx]`)                                | Use `flex-1` — widths are 1440px reference only                                                                           |
-| Right padding on content column                                   | Move to the `max-w` container div                                                                                         |
-| Missing `max-w-[1440px] mx-auto` wrapper                          | Always required — this is what caps layout width                                                                          |
-| Large container side padding applied too early                    | For large values like `px-[240px]` or `px-[160px]`, prefer `xl:` over `lg:` unless Figma explicitly requires `lg`       |
-| `whitespace-nowrap` on body/bullet text                           | Only use on single-word UI labels                                                                                         |
-| Tailwind CDN in section partial                                   | CDN belongs in `_layouts/base.html` only                                                                                  |
-| CSS tokens defined inline                                         | Always a separate `css/tokens.css`, listed in frontmatter `styles:`                                                       |
-| Saving SVG assets as `.png`                                       | Run `file *.png` after download — Figma returns SVG for all vectors; rename to `.svg`                                     |
-| `campaign_include '_includes/hero.html'`                          | Tag auto-prepends `_includes/` — use just `'hero.html'` or `'_components/btn.html'`                                       |
-| SVG icon stretches vertically                                     | Check SVG source for `preserveAspectRatio="none"` — if present, set explicit `w-[N] h-[N]` on the `<img>`, not just width |
-| Arrow/icon points wrong direction                                 | Figma MCP code often wraps icons in `rotate-90` — carry that rotation over as a Tailwind class on the `<img>`             |
-| Non-web font (Bayshore, script/display fonts) renders as fallback | Export the text node as a PNG with `export-node.sh` and use `<img>` instead of a font                                     |
-| `w-auto` image stretches inside `flex flex-col`                   | `align-items: stretch` overrides `w-auto` — add `self-start` to the `<img>`                                               |
-| p-big font size uses `lg:` prefix (`text-[18px] lg:text-[20px]`) | Tablet is also 20px — always use `md:` prefix: `text-[18px] md:text-[20px]`                                               |
-| p-small font size uses `md:` prefix (`text-[14px] md:text-[16px]`) | Tablet stays at 14px — always use `lg:` prefix: `text-[14px] lg:text-[16px]`                                            |
+| Mistake                                                            | Fix                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fixed column widths (`lg:w-[Npx]`)                                 | Use `flex-1` — widths are 1440px reference only                                                                                                                                                                                                                      |
+| Right padding on content column                                    | Move to the `max-w` container div                                                                                                                                                                                                                                    |
+| Missing `max-w-[1440px] mx-auto` wrapper                           | Always required — this is what caps layout width                                                                                                                                                                                                                     |
+| Large container side padding applied too early                     | For large values like `px-[240px]` or `px-[160px]`, prefer `xl:` over `lg:` unless Figma explicitly requires `lg`                                                                                                                                                    |
+| `whitespace-nowrap` on body/bullet text                            | Only use on single-word UI labels                                                                                                                                                                                                                                    |
+| Tailwind CDN in section partial                                    | CDN belongs in `_layouts/base.html` only                                                                                                                                                                                                                             |
+| CSS tokens defined inline                                          | Always a separate `css/tokens.css`, listed in frontmatter `styles:`                                                                                                                                                                                                  |
+| Saving SVG assets as `.png`                                        | Run `file *.png` after download — Figma returns SVG for all vectors; rename to `.svg`                                                                                                                                                                                |
+| `campaign_include '_includes/hero.html'`                           | Tag auto-prepends `_includes/` — use just `'hero.html'`                                                                                                                                                                                                              |
+| SVG icon stretches or distorts                                     | Figma always exports SVGs with `preserveAspectRatio="none" width="100%" height="100%"` — fix the SVG source: change to `preserveAspectRatio="xMidYMid meet"`. Do this for every downloaded SVG. Setting explicit `w-[N] h-[N]` on the `<img>` alone is not reliable. |
+| Arrow/icon points wrong direction                                  | Figma MCP code often wraps icons in `rotate-90` — carry that rotation over as a Tailwind class on the `<img>`                                                                                                                                                        |
+| Non-web font (Bayshore, script/display fonts) renders as fallback  | Export the text node as a PNG with `export-node.sh` and use `<img>` instead of a font                                                                                                                                                                                |
+| `w-auto` image stretches inside `flex flex-col`                    | `align-items: stretch` overrides `w-auto` — add `self-start` to the `<img>`                                                                                                                                                                                          |
+| p-big font size uses `lg:` prefix (`text-[18px] lg:text-[20px]`)   | Tablet is also 20px — always use `md:` prefix: `text-[18px] md:text-[20px]`                                                                                                                                                                                          |
+| p-small font size uses `md:` prefix (`text-[14px] md:text-[16px]`) | Tablet stays at 14px — always use `lg:` prefix: `text-[14px] lg:text-[16px]`                                                                                                                                                                                         |
 
 
 ---
@@ -784,10 +789,9 @@ Run: `npm run dev` → select campaign → `http://localhost:3000/{slug}/`
 - Uses Auto Layout throughout (no absolute positioning)
 - Width: Fill or fixed 1440px
 - All dynamic text uses component properties (snake_case)
-- All toggle elements use boolean properties (`show_*`)
 - All images named with `img:`, `bg:`, or `img-group:` prefix as appropriate
 - Colors reference Figma Color Styles (not hardcoded hex)
-- Typography font sizes come from Figma Variables (`--font/size-*`) — read fallback px values from each breakpoint node to determine responsive sizes
+- Typography font sizes come from Figma Variables (`--font/size-`*) — read fallback px values from each breakpoint node to determine responsive sizes
 - Spacing values align to Tailwind scale (multiples of 4px)
 - Description contains valid JSON metadata block
 - Desktop + mobile breakpoint variants defined
@@ -797,9 +801,7 @@ Run: `npm run dev` → select campaign → `http://localhost:3000/{slug}/`
 - Liquid partial generated in `_includes/`
 - All asset refs use `campaign_asset` filter
 - All internal links use `campaign_link` filter
-- Sub-components use `campaign_include`
-- Boolean properties wrapped in `{% if %}` blocks
-- Text properties have `| default:` fallbacks
+- Text properties do NOT use `| default:` fallbacks — omit them entirely so missing variables are visible during dev/QA rather than silently showing placeholder text in production
 - Images exported to `assets/images/`
 - CSS generated (Tailwind classes or custom or both)
 - JS files listed in section metadata
