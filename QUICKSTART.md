@@ -12,7 +12,7 @@ This tool works with any Figma file that follows the Sellmore design framework. 
 - There is a **Sections** page
 - Section frames are named `section/{kebab-case}` (e.g. `section/hero-banner`)
 - Each section has a **`breakpoint` variant** with desktop, tablet, and mobile frames
-- Component properties use `snake_case` for text (`headline_text`) and `show_*` for booleans (`show_badge`)
+- Component properties use `snake_case` for text (`headline_text`)
 - Image layers are prefixed `img:`, `bg:`, or `img-group:`
 
 If you're working from the [Debranded Sections](https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/Debranded-Sections) master file or a client file branched from it, you're set.
@@ -111,6 +111,19 @@ npm run dev
 ```
 
 Select your campaign from the list → browser opens at `http://localhost:3000/{slug}/` with live reload. Re-run after each new section to see the page grow.
+
+---
+
+## 7. Compare against Figma
+
+After exporting a section, generate a side-by-side comparison of the Figma ref and your live output:
+
+```bash
+npm run compare <slug>
+open src/<slug>/_ref/compare.html
+```
+
+The compare page loads the Figma reference screenshot on the left and the live dev server in an iframe on the right at all 3 breakpoints. Press `D` / `T` / `M` to switch. Edit your HTML, refresh, repeat until it matches.
 
 ---
 
