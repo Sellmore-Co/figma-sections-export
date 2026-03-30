@@ -20,6 +20,10 @@ If you're working from the [Debranded Sections](https://www.figma.com/design/ia7
 **Choose a slug for the landing page.**
 The slug is a short kebab-case name for the whole page — not per section. All sections from that page will live inside it. Pick it once and use it for every export on this page.
 
+**Interactive sections** (sliders, accordions, sticky CTAs, icon marquees): mirror behaviour and `data-*` markup from [campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections) `src/landing/_includes/` and `assets/js/landing.js` — see [CLAUDE.md — Reference behaviour](./CLAUDE.md#reference-behaviour-interactivity--responsive).
+
+**Figma rate limits:** MCP fetches, `save-ref.sh`, and `export-node.sh` all consume Figma quota. Fetch breakpoints once per section, avoid re-fetching during refinement, stagger image renders, and skip `save-ref` when `_ref/` screenshots are already up to date — see [CLAUDE.md — Figma API rate limits & hygiene](./CLAUDE.md#figma-api-rate-limits--hygiene).
+
 ```
 src/{slug}/
   _includes/
