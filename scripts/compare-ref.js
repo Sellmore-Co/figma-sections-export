@@ -166,7 +166,20 @@ function generateHtml(slug, liveUrl, panels) {
     .panel { display: none; }
     .panel.active { display: block; }
 
-    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .compare-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    /* Match Figma export width per tab — ref + live are both capped at breakpoint px, centered */
+    .bp-constrain {
+      width: min(100%, var(--bp-w));
+      max-width: var(--bp-w);
+      margin-left: auto;
+      margin-right: auto;
+    }
 
     .col-label {
       font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
@@ -178,8 +191,15 @@ function generateHtml(slug, liveUrl, panels) {
     }
     .rendered-col .col-label span { border-color: #1a3a6a; color: #4d8af0; }
 
-    /* Figma ref image */
-    .figma-col img { width: 100%; height: auto; display: block; border: 1px solid #2a2a2a; border-radius: 4px; }
+    /* Figma ref image — natural size of export, not stretched to full column */
+    .figma-col .bp-constrain img {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      display: block;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+    }
     .no-ref {
       display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px;
       height: 200px; background: #181818; border: 1px dashed #2a2a2a; border-radius: 4px;
@@ -187,10 +207,11 @@ function generateHtml(slug, liveUrl, panels) {
     }
     .no-ref code { font-family: monospace; font-size: 11px; color: #555; }
 
-    /* Iframe scaling */
+    /* Iframe scaling — wrap matches breakpoint width (inside .bp-constrain) */
     .iframe-wrap {
       width: 100%;
-      overflow: hidden;
+      max-width: 100%;
+      overflow: auto;
       border: 1px solid #2a2a2a;
       border-radius: 4px;
       background: #fff;
@@ -222,15 +243,19 @@ function generateHtml(slug, liveUrl, panels) {
 
         <div class="col figma-col">
           <div class="col-label"><span>Figma — ${p.name}</span></div>
+          <div class="bp-constrain" style="--bp-w: ${p.width}px">
           ${p.figmaExists
             ? `<img src="${p.figmaSrc}" alt="Figma ${p.name}">`
             : `<div class="no-ref">No Figma ref<code>run save-ref.sh to add</code></div>`}
+          </div>
         </div>
 
         <div class="col rendered-col">
           <div class="col-label"><span>Live — ${p.name}</span></div>
+          <div class="bp-constrain" style="--bp-w: ${p.width}px">
           <div class="iframe-wrap" data-native-width="${p.width}">
-            <iframe src="${liveUrl}" scrolling="no" title="Rendered ${p.name}"></iframe>
+            <iframe src="${liveUrl}" scrolling="yes" title="Rendered ${p.name}"></iframe>
+          </div>
           </div>
         </div>
 
@@ -258,21 +283,24 @@ function generateHtml(slug, liveUrl, panels) {
       if (e.key.toLowerCase() === 'm') switchBp('mobile');
     });
 
-    // Scale each iframe to fill its column at the correct breakpoint width
+    // Scale each iframe to fill its column width and keep a scrollable viewport
     function scaleIframes() {
       document.querySelectorAll('.iframe-wrap').forEach(wrap => {
         const nativeWidth = Number(wrap.dataset.nativeWidth);
         const containerWidth = wrap.offsetWidth;
-        const scale = containerWidth / nativeWidth;
-        const iframeHeight = Math.round(window.screen.height / scale); // tall enough to show full section
+        // Never upscale above 1:1; only scale down when column is narrower.
+        const scale = Math.min(containerWidth / nativeWidth, 1);
+        // Reserve a stable viewport height so users can scroll long composed pages
+        const viewportHeight = Math.max(520, window.innerHeight - 170);
+        const iframeHeight = Math.round(viewportHeight / scale);
 
         const iframe = wrap.querySelector('iframe');
         iframe.style.width  = nativeWidth + 'px';
         iframe.style.height = iframeHeight + 'px';
         iframe.style.transform = \`scale(\${scale})\`;
 
-        // Shrink the wrapper to the scaled height so the grid row fits
-        wrap.style.height = Math.round(iframeHeight * scale) + 'px';
+        // Wrapper stays viewport-sized; iframe content scrolls inside it.
+        wrap.style.height = viewportHeight + 'px';
       });
     }
 
