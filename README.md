@@ -30,7 +30,7 @@ src/novaburn-presale/
 
 This tool works with any Figma file that follows the Sellmore design framework conventions. Before starting, confirm your file has:
 
-- A **Sections** page with section frames named `section/{kebab-case}` (e.g. `section/hero-banner`)
+- A **Sections** page with section frames following `{category}{number}-{breakpoint}` naming (e.g. `hero1-desktop`, `hero1-tablet`, `hero1-mobile`)
 - Each section has a **`breakpoint` variant** with desktop, tablet, and mobile frames
 - Component properties use `snake_case` for text
 - Image layers are prefixed `img:`, `bg:`, or `img-group:`

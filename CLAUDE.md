@@ -56,7 +56,7 @@ Select **Figma** from the plugin list, or add it manually to your Claude Code MC
 }
 ```
 
-Get your Figma personal access token: Figma → Account Settings → Personal Access Tokens → Generate.
+Get your Figma personal access token: Figma → Account Settings → Personal Access Tokens → Generate. Scopes needed: Files → **Read the contents of and render images from files** + Files → **Read metadata of files**.
 
 Restart Claude Code after adding the plugin. You'll know it's working when Claude can call `get_design_context` and return screenshots directly from a Figma URL.
 
@@ -124,7 +124,7 @@ What matters is consistent scoping:
 
 ## Core Principle
 
-Every Figma frame, component property, style, and naming convention maps 1:1 to a framework concept. The designer's work IS the developer spec. No interpretation needed.
+Every Figma frame, style, and naming convention maps 1:1 to a framework concept. The designer's work IS the developer spec. No interpretation needed.
 
 ---
 
@@ -146,7 +146,7 @@ Every Figma frame, component property, style, and naming convention maps 1:1 to 
 | ------------------------- | ------------------------------ | ------------------------------------------- |
 | Section Frame             | Liquid partial                 | `_includes/{name}.html`                     |
 | Component Property (text) | Liquid variable                | `{{ variable_name }}`                       |
-| Color Style               | CSS custom property            | `var(--brand-primary)`                      |
+| Color Variable            | CSS custom property            | `var(--brand-primary)`                      |
 | Typography Variable       | Responsive Tailwind classes    | `text-[18px] md:text-[20px] lg:text-[28px]` |
 | Auto Layout               | Flex/Grid CSS                  | `flex flex-col gap-4`                       |
 | Image Fill                | Asset + filter                 | `{{ 'images/x.jpg'                          |
@@ -160,8 +160,8 @@ Every Figma frame, component property, style, and naming convention maps 1:1 to 
 
 | Figma Element      | Convention             | Example                    | Maps To                                |
 | ------------------ | ---------------------- | -------------------------- | -------------------------------------- |
-| Section frame      | `section/{name}`       | `section/hero-banner`      | `_includes/hero-banner.html`           |
-| Component property | `snake_case`           | `headline_text`            | `{{ headline_text }}`                  |
+| Section frame      | `{category}{number}`   | `hero1`                    | `_includes/hero-1.html`                |
+| Text layer content | inferred from context  | `"How Next Commerce Works"` | `{{ section_heading }}`               |
 | Contained image    | `img:{filename}`       | `img:hero-product`         | `<img>` + `object-contain`             |
 | Background image   | `bg:{filename}`        | `bg:hero-bg`               | CSS `background-image`                 |
 | Composed image     | `img-group:{filename}` | `img-group:hero-composite` | `<img>` (group exported as single PNG) |
@@ -175,7 +175,7 @@ Every Figma frame, component property, style, and naming convention maps 1:1 to 
 
 | Requirement                              | Required?   |
 | ---------------------------------------- | ----------- |
-| Name follows `section/{kebab-case}`      | Required    |
+| Name follows `{category}{number}-{breakpoint}` (e.g. `hero1-desktop`) | Required    |
 | Top-level frame (not nested)             | Required    |
 | Uses Auto Layout                         | Required    |
 | Width: Fill container or fixed 1440px    | Required    |
@@ -184,16 +184,11 @@ Every Figma frame, component property, style, and naming convention maps 1:1 to 
 
 ---
 
-## Component Properties → Liquid Variables
+## Text Layers → Liquid Variables
 
+Text layers in the Figma file use default naming (layer content or generic IDs). Claude reads the text content directly and infers `snake_case` Liquid variable names from context — e.g. a heading that reads "How Next Commerce Works" becomes `{{ section_heading }}`.
 
-| Figma Property Type | Liquid Output                                               |
-| ------------------- | ----------------------------------------------------------- |
-| Text                | `{{ headline }}`                                            |
-| Instance Swap       | Inline the component HTML directly into the section partial |
-
-
-All properties use `snake_case`. Spaces in Figma property names are converted: `Headline Text` → `headline_text`.
+**Copy must be final before export.** Placeholder text ("Lorem ipsum", "Headline goes here") produces meaningless variable names that must be manually fixed after export.
 
 ---
 
@@ -283,7 +278,7 @@ Script compares mobile/desktop variants and generates responsive classes:
 
 ## Design Tokens
 
-### Colors (Figma Color Styles → CSS custom properties)
+### Colors (Figma Color Variables → CSS custom properties)
 
 
 | Figma Style Name     | CSS Custom Property |
@@ -520,22 +515,29 @@ Use `data-*` attributes as JS hooks — never class names:
 
 ## Standard Section Catalog
 
+Frame names use `{category}{number}-{breakpoint}` (e.g. `hero1-desktop`). Export partial is `{category}-{number}.html` (e.g. `hero-1.html`). Numbers correspond to design variants — use the same number as the Figma frame being exported.
 
-| Section                    | Frame Name                 | Category     | JS?    |
-| -------------------------- | -------------------------- | ------------ | ------ |
-| Hero Banner                | `section/hero-banner`      | hero         | No     |
-| Social Proof Bar           | `section/social-proof-bar` | social-proof | No     |
-| Product Features           | `section/product-features` | content      | No     |
-| Before & After             | `section/before-after`     | content      | Yes    |
-| Testimonials               | `section/testimonials`     | social-proof | Slider |
-| Ingredients / How It Works | `section/ingredients`      | content      | No     |
-| FAQ Accordion              | `section/faq-accordion`    | faq          | Yes    |
-| CTA Strip                  | `section/cta-strip`        | cta          | No     |
-| Guarantee                  | `section/guarantee`        | trust        | No     |
-| Pricing Table              | `section/pricing-table`    | cta          | No     |
-| Video Section              | `section/video-section`    | content      | Yes    |
-| Countdown Timer            | `section/countdown`        | urgency      | Yes    |
-| Footer                     | `section/footer`           | footer       | No     |
+| Section          | Figma Base Name      | Export Partial          | Category     | JS?    |
+| ---------------- | -------------------- | ----------------------- | ------------ | ------ |
+| Hero             | `hero{n}`            | `hero-{n}.html`         | hero         | No     |
+| Benefits         | `benefits{n}`        | `benefits-{n}.html`     | content      | No     |
+| Features         | `features{n}`        | `features-{n}.html`     | content      | No     |
+| Before & After   | `beforeafter{n}`     | `beforeafter-{n}.html`  | content      | Yes    |
+| Testimonials     | `testimonials{n}`    | `testimonials-{n}.html` | social-proof | Slider |
+| Reviews          | `reviews{n}`         | `reviews-{n}.html`      | social-proof | Slider |
+| UGC              | `ugc{n}`             | `ugc-{n}.html`          | social-proof | Slider |
+| How-To           | `howto{n}`           | `howto-{n}.html`        | content      | No     |
+| Ingredients      | `ingredients{n}`     | `ingredients-{n}.html`  | content      | No     |
+| Problem/Solution | `problemsolution{n}` | `problemsolution-{n}.html` | content   | No     |
+| Compare          | `compare{n}`         | `compare-{n}.html`      | content      | No     |
+| Results          | `results{n}`         | `results-{n}.html`      | social-proof | No     |
+| Icons            | `icons{n}`           | `icons-{n}.html`        | social-proof | No     |
+| Guarantee        | `guarantee{n}`       | `guarantee-{n}.html`    | trust        | No     |
+| Bottom CTA       | `bottomcta{n}`       | `bottomcta-{n}.html`    | cta          | No     |
+| FAQ              | `faq{n}`             | `faq-{n}.html`          | faq          | Yes    |
+| Media            | `media{n}`           | `media-{n}.html`        | content      | Yes    |
+| Nav              | `nav{n}`             | `nav-{n}.html`          | nav          | No     |
+| Footer           | `footer{n}`          | `footer-{n}.html`       | footer       | No     |
 
 
 ---
@@ -546,7 +548,7 @@ Use `data-*` attributes as JS hooks — never class names:
 | API Field                           | Purpose                                         |
 | ----------------------------------- | ----------------------------------------------- |
 | `node.name`                         | Frame name → output filename                    |
-| `node.componentPropertyDefinitions` | Properties → Liquid variables                   |
+| `node.characters`                   | Text content → Liquid variable value            |
 | `node.description`                  | JSON metadata → export config                   |
 | `node.children`                     | Child nodes → HTML structure                    |
 | `node.layoutMode`                   | `HORIZONTAL`/`VERTICAL` → `flex-row`/`flex-col` |
@@ -784,13 +786,13 @@ This opens the compare page immediately — the developer just needs `npm run de
 
 ### Figma Setup
 
-- Section frame named `section/{kebab-case}`
+- Section frame named `{category}{number}-{breakpoint}` (e.g. `hero1-desktop`)
 - Frame is top-level on the Sections page
 - Uses Auto Layout throughout (no absolute positioning)
 - Width: Fill or fixed 1440px
-- All dynamic text uses component properties (snake_case)
+- All copy is final (no placeholder text)
 - All images named with `img:`, `bg:`, or `img-group:` prefix as appropriate
-- Colors reference Figma Color Styles (not hardcoded hex)
+- Colors reference Figma Color Variables (not hardcoded hex)
 - Typography font sizes come from Figma Variables (`--font/size-`*) — read fallback px values from each breakpoint node to determine responsive sizes
 - Spacing values align to Tailwind scale (multiples of 4px)
 - Description contains valid JSON metadata block

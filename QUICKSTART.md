@@ -10,7 +10,7 @@ Export sections from any Figma file built on the Sellmore design framework to pr
 This tool works with any Figma file that follows the Sellmore design framework. Open your file and confirm:
 
 - There is a **Sections** page
-- Section frames are named `section/{kebab-case}` (e.g. `section/hero-banner`)
+- Section frames follow `{category}{number}-{breakpoint}` naming (e.g. `hero1-desktop`, `hero1-tablet`, `hero1-mobile`)
 - Each section has a **`breakpoint` variant** with desktop, tablet, and mobile frames
 - Component properties use `snake_case` for text (`headline_text`)
 - Image layers are prefixed `img:`, `bg:`, or `img-group:`
@@ -51,7 +51,7 @@ cp .env.example .env
 Open `.env` and paste your Figma personal access token.
 
 Get one at: **Figma → Account Settings → Personal Access Tokens → Generate new token**
-Scopes needed: **File content** (read) + **File metadata** (read).
+Scopes needed: Files → **Read the contents of and render images from files** + Files → **Read metadata of files**
 
 ---
 
