@@ -4,7 +4,9 @@ This repo builds an export script that reads a Figma file via the REST API and g
 
 **Figma file:** [https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/Debranded-Sections](https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/Debranded-Sections)
 
-**Reference implementation:** [https://github.com/NextCommerceCo/campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections) — canonical example of exported section partials, asset structure, JS conventions, and page composition. When in doubt about how an export should look, refer to this repo.
+**Reference implementation:** [campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections) — canonical example of exported section partials, asset structure, JS conventions, and page composition.
+
+**Before generating HTML for an export:** in [campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections), open **`src/landing/_includes/`** ([browse on GitHub](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections/tree/main/src/landing/_includes)) and skim at least one partial that matches the section type you are exporting (e.g. hero → `hero-*.html`, FAQ → `faq-*.html`). Copy **patterns**, not marketing copy: outer `section` vs inner wrapper, `max-w-*` + `mx-auto`, horizontal padding, how images are constrained and positioned (`object-*`, flex vs absolute columns), card/list structure, and how **radius, borders, and shadows** are written (see **Visual fidelity**). *This path is in the reference repo — not necessarily the same as your local preview campaign folder.* If an older partial disagrees with the rest of this document on tokens or naming, **this document (`CLAUDE.md`) wins**.
 
 ---
 
@@ -253,6 +255,28 @@ Text layers in the Figma file use default naming (layer content or generic IDs).
   </div>
 </section>
 ```
+
+### Mandatory inner max-width
+
+- `<section>` may be full-bleed for backgrounds.
+- **All** main content (text, grids, cards, columns) must sit inside a child with **`max-w-[1440px]`** or **`max-w-7xl`** (pick one per project and stay consistent), **`mx-auto`**, and usually **`w-full`**.
+- **Anti-pattern:** direct children of `<section>` that are only `flex` / `grid` / `px-*` with **no** `max-w-*` — the layout reads full viewport width on large screens.
+- **Exception:** intentional full-bleed strips (e.g. one full-width image band). Typography and UI blocks should still use a max-width wrapper unless the design explicitly breaks that rule.
+
+### Visual fidelity (radius, borders, shadows)
+
+**Source of truth:** Prefer the **same section family** in [campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections) under **`src/landing/_includes/`** over generic Tailwind guesses. Shipped partials encode how subtle UI is done — e.g. primary CTAs often use **`rounded-[6px]`** with **`bg-[var(--brand-primary)]`**, FAQ-style rows often use **`border-t` / `border-b`** with **`border-[rgba(0,0,0,0.16)]`**, and image columns that clip content use **`overflow-hidden`** on the wrapper plus `object-*` / sizing as in the reference. Use **`rounded-[Npx]`** when Figma specifies a radius and the reference uses arbitrary values — do not default to `rounded-md` / `rounded-lg` unless both Figma and the reference agree.
+
+`get_design_context` often omits strokes, corner radius, or shadows. After comparing breakpoints, check the Figma screenshot for cards, buttons, and dividers — then align classes with **both** Figma and the closest reference partial.
+
+| Figma / MCP signal | What to do |
+| ------------------ | ---------- |
+| Corner radius on button, card, image | Match reference style; often `rounded-[Npx]` on the element that carries the fill; for clipped images use wrapper `overflow-hidden` + `rounded-*` |
+| Hairline dividers, accordion rows | `border-t` / `border-b`; rgba or `var(--border-default)` as in the same-category reference partial |
+| Shadow / elevation | Only if Figma and/or the reference partial use it (`shadow-sm` … `shadow-lg` or arbitrary) |
+| Opacity | `opacity-*` or rgba borders as in reference |
+
+**Rules:** Apply **`rounded-*`** on the same element that owns background/border in Figma when possible. Prefer **tokens** where the reference does; use **rgba hairlines** where that pattern appears in the reference. If Figma shows rounded UI and the first HTML pass is square, fix it before handoff.
 
 ---
 
@@ -601,6 +625,9 @@ After fetching, compare all three side by side and record:
 - Desktop: outer padding, inner gap, column widths, element order
 - Tablet: outer padding, inner gap, font size deltas
 - Mobile: stacking order, text alignment, image height, any elements that hide or reorder
+- Cards, buttons, dividers: corner radius, borders, shadows — note for markup and cross-check **Visual fidelity** and the same-category file in **`src/landing/_includes/`**
+
+**Before writing any markup:** open [campaign-cart-landing-page-sections `src/landing/_includes/`](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections/tree/main/src/landing/_includes) and skim a partial for the **same section category** (e.g. hero → `hero-*.html`, FAQ → `faq-*.html`) so asset paths, inner max-width, positioning, and **visual treatment** (radius, borders, shadows) match shipped pages.
 
 Only once you have a clear picture of how the layout changes across all three breakpoints should you begin writing HTML. The responsive class decisions (`flex-col md:flex-row`, `hidden md:block`, etc.) should be obvious before you start, not discovered during.
 
@@ -608,7 +635,7 @@ Only once you have a clear picture of how the layout changes across all three br
 
 ```
 <section>              ← bg color, overflow-hidden, full-width
-  <div> container      ← max-w-[1440px] mx-auto + Figma outer padding (right only)
+  <div> container      ← max-w-[1440px] mx-auto w-full + Figma outer padding (right only); never omit max-w + mx-auto
     <div> content      ← flex-col md:flex-row + gap values from inner Figma node
       [components]     ← image column, content column, sub-components
 ```
@@ -619,10 +646,11 @@ Mapping Figma nodes to layers:
 | Figma Node                              | HTML Layer      | Key Properties                                    |
 | --------------------------------------- | --------------- | ------------------------------------------------- |
 | Section frame (outer, e.g. `143:10518`) | `<section>`     | `bg-*`, `overflow-hidden`                         |
-| Section frame padding                   | Container `div` | `max-w-[1440px] mx-auto md:pr-[N] lg:pr-[N]`      |
+| Section frame padding                   | Container `div` | `max-w-[1440px] mx-auto w-full md:pr-[N] lg:pr-[N]` |
 | Inner flex node (e.g. `143:10519`)      | Content `div`   | `flex flex-col md:flex-row md:gap-[N] lg:gap-[N]` |
 | Child column nodes                      | Components      | `md:flex-1` per column                            |
 
+**Sanity check before saving the partial:** search the file for `max-w-` — the main inner container must include `max-w-[1440px]` or `max-w-7xl` with `mx-auto`. If only `<section>` and flex/grid exist with no max-width on the content wrapper, the structure is wrong.
 
 ### Step 3 — Responsive column rules
 
@@ -765,7 +793,10 @@ This opens the compare page immediately — the developer just needs `npm run de
 | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Fixed column widths (`lg:w-[Npx]`)                                 | Use `flex-1` — widths are 1440px reference only                                                                                                                                                                                                                      |
 | Right padding on content column                                    | Move to the `max-w` container div                                                                                                                                                                                                                                    |
-| Missing `max-w-[1440px] mx-auto` wrapper                           | Always required — this is what caps layout width                                                                                                                                                                                                                     |
+| Missing inner `max-w-* mx-auto` wrapper                          | **Always required** on the main inner container — without it the section stretches edge-to-edge on wide monitors                                                                                                                                                     |
+| Skipping the reference partial in campaign-cart-landing-page-sections | Open **`src/landing/_includes/`** in that repo and skim a same-category partial before coding — aligns assets, positioning, wrapper patterns, and visual treatment                                                                                                      |
+| Generic `rounded-md` / `rounded-lg` when reference uses `rounded-[Npx]` | Match the **same section family** in `src/landing/_includes/` — arbitrary radius is often intentional                                                                                                                                    |
+| Borders/shadows in Figma or reference, missing in export HTML        | Map strokes to `border*` and effects to `shadow*`; see **Visual fidelity**                                                                                                                                                                                            |
 | Large container side padding applied too early                     | For large values like `px-[240px]` or `px-[160px]`, prefer `xl:` over `lg:` unless Figma explicitly requires `lg`                                                                                                                                                    |
 | `whitespace-nowrap` on body/bullet text                            | Only use on single-word UI labels                                                                                                                                                                                                                                    |
 | Tailwind CDN in section partial                                    | CDN belongs in `_layouts/base.html` only                                                                                                                                                                                                                             |
@@ -801,6 +832,9 @@ This opens the compare page immediately — the developer just needs `npm run de
 ### Export Output
 
 - Liquid partial generated in `_includes/`
+- Inner layout uses **`max-w-[1440px]` or `max-w-7xl`** with **`mx-auto`** (and usually **`w-full`**) on the main content wrapper — verified before handoff
+- **Reference partial** in [campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections) **`src/landing/_includes/`** reviewed for the same section type (layout, assets, positioning, radius/borders/shadows)
+- Radius, borders, shadows checked against Figma and the reference partial — see **Visual fidelity**
 - All asset refs use `campaign_asset` filter
 - All internal links use `campaign_link` filter
 - Text properties do NOT use `| default:` fallbacks — omit them entirely so missing variables are visible during dev/QA rather than silently showing placeholder text in production

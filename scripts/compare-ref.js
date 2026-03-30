@@ -17,7 +17,12 @@ const fs = require('fs');
 const path = require('path');
 
 const [, , slug, portArg] = process.argv;
-const port = portArg || 3000;
+const parsedPort = parseInt(portArg, 10);
+if (portArg && isNaN(parsedPort)) {
+  console.error(`Invalid port "${portArg}" — must be a number. Did you mean: npm run compare ${slug}?`);
+  process.exit(1);
+}
+const port = parsedPort || 3000;
 
 if (!slug) {
   console.error('Usage: npm run compare <slug> [port]');

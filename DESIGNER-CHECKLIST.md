@@ -84,5 +84,5 @@ Every image layer must be named with one of three prefixes. Pick the right one �
 ## Fonts
 
 - All fonts are **web-safe or Google Fonts** (Plus Jakarta Sans, Inter, etc.)
-- Any display or script font that won't load in a browser (e.g. a custom brand script) has been flagged to the developer — these text layers will need to be rasterised and exported as images
+- If the design uses a display or script font that won't load in a browser (e.g. a custom brand script), **flag it to the developer before handoff** — the text will be exported as an image rather than live text
 
