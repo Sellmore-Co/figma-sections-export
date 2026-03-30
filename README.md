@@ -114,7 +114,7 @@ npm run dev
 |---|---|
 | `scripts/save-ref.sh` | Download reference screenshots for each breakpoint |
 | `scripts/export-node.sh` | Export a Figma node as canvas-rendered PNG (respects crop/frame) |
-| `npm run compare <slug>` | Generate a Figma vs live comparison page at all 3 breakpoints |
+| `npm run compare <slug> [ref-prefix] [port]` | Generate a Figma vs live comparison page at all 3 breakpoints; optional `ref-prefix` selects which `*-desktop.png` set in `_ref/` (see QUICKSTART) |
 
 ---
 

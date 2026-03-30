@@ -120,8 +120,13 @@ After exporting a section, generate a side-by-side comparison of the Figma ref a
 
 ```bash
 npm run compare <slug>
+npm run compare <slug> 3001
+npm run compare <slug> <ref-prefix>
+npm run compare <slug> <ref-prefix> 3001
 open src/<slug>/_ref/compare.html
 ```
+
+`<ref-prefix>` is the part before `-desktop.png` / `-tablet.png` / `-mobile.png` in `_ref/` (the same name you pass to `save-ref.sh` as `<section>`). If you omit it and more than one ref set exists, the tool picks alphabetically first and prints a warning — pass `<ref-prefix>` to choose explicitly. If the second argument is numeric only, it is treated as the dev server port (same as before).
 
 The compare page loads the Figma reference screenshot on the left and the live dev server in an iframe on the right at all 3 breakpoints. Press `D` / `T` / `M` to switch. Edit your HTML, refresh, repeat until it matches.
 
