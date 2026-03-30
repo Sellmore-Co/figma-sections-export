@@ -62,6 +62,21 @@ Get your Figma personal access token: Figma → Account Settings → Personal Ac
 
 Restart Claude Code after adding the plugin. You'll know it's working when Claude can call `get_design_context` and return screenshots directly from a Figma URL.
 
+**Connection fallback (if local MCP is unstable):**
+
+If the local Figma MCP plugin has intermittent connection or auth issues, add Figma's remote MCP endpoint as a backup transport:
+
+```bash
+claude mcp add --transport http figma-remote-mcp https://mcp.figma.com/mcp
+```
+
+**Default recommendation:** keep the local Figma MCP plugin as primary, and use `figma-remote-mcp` as a fallback when local transport is flaky in a session.
+
+After adding the fallback:
+- Restart Claude/Cursor session
+- Re-run a simple Figma read call (`get_design_context`) on a known node
+- Complete auth flow if prompted
+
 ---
 
 ### 3. Get the Figma links for a responsive section
@@ -836,6 +851,7 @@ Figma applies **per-minute** limits to **MCP / REST** usage. Heavy bursts come f
 3. **Stagger** heavy work: prefer order **MCP (3) → HTML / curl assets → `export-node` one-by-one with gaps → `save-ref` once → `npm run compare`**. Avoid **`save-ref` + many `export-node` calls in the same burst**.
 4. **Batch `export-node.sh` sequentially** with a few seconds between runs when exporting many assets.
 5. If you hit **429 / throttling**, wait **~60 seconds** and retry; reduce parallel Figma work first.
+6. `figma-remote-mcp` can help with transport/auth stability, but it **does not** increase Figma API quotas; the same rate-limit hygiene rules still apply.
 
 ### After every export — auto-open the compare tool
 
