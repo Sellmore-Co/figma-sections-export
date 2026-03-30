@@ -486,14 +486,22 @@ Use Tailwind utilities for layout (flex, grid, spacing, responsive) and custom C
 
 All interactivity is powered by a **single unified file**: `assets/js/landing.js`. Do not create per-section JS files. New interactive patterns must be added to `landing.js` using data attributes as the hook contract.
 
-**Carousel/slider sections use Swiper** (loaded via `base.html`). Configure via data attributes on the root element:
+**Canonical implementation** (attribute contracts and comments): [campaign-cart-landing-page-sections `landing.js`](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections/blob/main/src/landing/assets/js/landing.js).
+
+**Carousel/slider sections use Swiper** (loaded via `base.html`). The script finds **`[data-swiper]`** on the `.swiper` element and reads **`data-slides`**, **`data-gap`**, **`data-loop`**, etc. from the nearest **`[data-swiper-root]`** ancestor (or legacy wrappers). Put breakpoint attributes on the root; include prev/next hooks if the design has arrows.
 
 ```html
 <div data-swiper-root
-     data-slides="1.1" data-slides-md="2" data-slides-lg="3"
+     data-slides="1" data-slides-md="2" data-slides-lg="3"
      data-gap="16" data-gap-md="24" data-gap-lg="32"
-     data-loop="true">
-  <div class="swiper-wrapper">...</div>
+     data-loop="true" data-loop-md="true" data-loop-lg="false">
+  <div class="swiper" data-swiper>
+    <div class="swiper-wrapper">...</div>
+  </div>
+  <div data-swiper-controls>
+    <button type="button" data-swiper-prev aria-label="Previous">...</button>
+    <button type="button" data-swiper-next aria-label="Next">...</button>
+  </div>
 </div>
 ```
 
@@ -509,6 +517,8 @@ Use `data-*` attributes as JS hooks — never class names:
 </div>
 ```
 
+Optional: FAQ-style rows in reference partials may include **`[data-faq-vbar]`** for vertical-bar visibility toggling (see `landing.js`).
+
 **Countdown timer:**
 
 ```html
@@ -516,6 +526,27 @@ Use `data-*` attributes as JS hooks — never class names:
   ...
 </div>
 ```
+
+---
+
+## Reference behaviour (interactivity & responsive)
+
+Shipped behaviour for composed landing pages lives in **[campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections)**:
+
+- **[`src/landing/assets/js/landing.js`](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections/blob/main/src/landing/assets/js/landing.js)** — accordion, Swiper, countdown (and attribute contracts in file comments).
+- **`src/landing/_includes/`** — how each section wires markup, responsive classes, and any CSS-only patterns (e.g. icon marquees).
+
+When the Figma section matches a **category** below, **before finalizing HTML** open the **same or closest** reference partial (e.g. `testimonials-1.html`, `faq-1.html`, `icons-1.html`, `cta-1.html`) and **mirror structure and `data-*` hooks**, not only layout and visuals.
+
+| Recognize (Figma / catalog) | Behaviour | Reference to copy |
+| --------------------------- | --------- | ----------------- |
+| Testimonials, Reviews, UGC, Before & After; Ingredients carousels | **Swiper** — `data-swiper-root`, `data-swiper`, `data-slides*`, `data-gap*`, `data-loop*`, prev/next, optional pagination | e.g. `testimonials-1.html`, `reviews-1.html`; contracts in `landing.js` |
+| FAQ; accordions in Benefits / Ingredients / problem-solution | **Accordion** — `data-accordion`, `data-accordion-item`, `data-accordion-toggle`, `data-accordion-panel`, `data-accordion-icon` | e.g. `faq-1.html`; matching benefits/ingredients partials |
+| Icons strips with infinite / mobile ticker | Often **CSS marquee** (`@keyframes`, duplicated row), not `landing.js` | e.g. `icons-1.html` |
+| **CTA** / **bottom CTA** with fixed bar on small viewports | **Sticky / mobile CTA** — responsive visibility (`md:hidden` / `lg:block`), fixed or sticky wrapper; some reference partials use **section-specific** `data-*` and inline script — **match that partial** until unified in `landing.js` | e.g. `cta-1.html`, `bottomcta-1.html` |
+| Urgency / offer timers | **Countdown** — `data-countdown`, `data-duration-minutes`, `data-storage-key`, `data-countdown-hrs` / `min` / `sec` | Partial using countdown + `landing.js` |
+
+Some reference partials still use **inline script** for sticky CTA patterns; prefer matching the **published** reference over inventing new selectors.
 
 ---
 
@@ -541,27 +572,29 @@ Use `data-*` attributes as JS hooks — never class names:
 
 Frame names use `{category}{number}-{breakpoint}` (e.g. `hero1-desktop`). Export partial is `{category}-{number}.html` (e.g. `hero-1.html`). Numbers correspond to design variants — use the same number as the Figma frame being exported.
 
-| Section          | Figma Base Name      | Export Partial          | Category     | JS?    |
-| ---------------- | -------------------- | ----------------------- | ------------ | ------ |
-| Hero             | `hero{n}`            | `hero-{n}.html`         | hero         | No     |
-| Benefits         | `benefits{n}`        | `benefits-{n}.html`     | content      | No     |
-| Features         | `features{n}`        | `features-{n}.html`     | content      | No     |
-| Before & After   | `beforeafter{n}`     | `beforeafter-{n}.html`  | content      | Yes    |
-| Testimonials     | `testimonials{n}`    | `testimonials-{n}.html` | social-proof | Slider |
-| Reviews          | `reviews{n}`         | `reviews-{n}.html`      | social-proof | Slider |
-| UGC              | `ugc{n}`             | `ugc-{n}.html`          | social-proof | Slider |
-| How-To           | `howto{n}`           | `howto-{n}.html`        | content      | No     |
-| Ingredients      | `ingredients{n}`     | `ingredients-{n}.html`  | content      | No     |
-| Problem/Solution | `problemsolution{n}` | `problemsolution-{n}.html` | content   | No     |
-| Compare          | `compare{n}`         | `compare-{n}.html`      | content      | No     |
-| Results          | `results{n}`         | `results-{n}.html`      | social-proof | No     |
-| Icons            | `icons{n}`           | `icons-{n}.html`        | social-proof | No     |
-| Guarantee        | `guarantee{n}`       | `guarantee-{n}.html`    | trust        | No     |
-| Bottom CTA       | `bottomcta{n}`       | `bottomcta-{n}.html`    | cta          | No     |
-| FAQ              | `faq{n}`             | `faq-{n}.html`          | faq          | Yes    |
-| Media            | `media{n}`           | `media-{n}.html`        | content      | Yes    |
-| Nav              | `nav{n}`             | `nav-{n}.html`          | nav          | No     |
-| Footer           | `footer{n}`          | `footer-{n}.html`       | footer       | No     |
+| Section          | Figma Base Name      | Export Partial          | Category     | Interactivity |
+| ---------------- | -------------------- | ----------------------- | ------------ | ------------- |
+| Hero             | `hero{n}`            | `hero-{n}.html`         | hero         | —             |
+| Benefits         | `benefits{n}`        | `benefits-{n}.html`     | content      | Accordion (var.) |
+| Features         | `features{n}`        | `features-{n}.html`     | content      | —             |
+| Before & After   | `beforeafter{n}`     | `beforeafter-{n}.html`  | content      | Swiper        |
+| Testimonials     | `testimonials{n}`    | `testimonials-{n}.html` | social-proof | Swiper        |
+| Reviews          | `reviews{n}`         | `reviews-{n}.html`      | social-proof | Swiper        |
+| UGC              | `ugc{n}`             | `ugc-{n}.html`          | social-proof | Swiper        |
+| How-To           | `howto{n}`           | `howto-{n}.html`        | content      | —             |
+| Ingredients      | `ingredients{n}`     | `ingredients-{n}.html`  | content      | Swiper / Accordion |
+| Problem/Solution | `problemsolution{n}` | `problemsolution-{n}.html` | content   | —             |
+| Compare          | `compare{n}`         | `compare-{n}.html`      | content      | —             |
+| Results          | `results{n}`         | `results-{n}.html`      | social-proof | —             |
+| Icons            | `icons{n}`           | `icons-{n}.html`        | social-proof | CSS marquee   |
+| Guarantee        | `guarantee{n}`       | `guarantee-{n}.html`    | trust        | —             |
+| Bottom CTA       | `bottomcta{n}`       | `bottomcta-{n}.html`    | cta          | Sticky CTA (var.) |
+| FAQ              | `faq{n}`             | `faq-{n}.html`          | faq          | Accordion     |
+| Media            | `media{n}`           | `media-{n}.html`        | content      | Swiper / video |
+| Nav              | `nav{n}`             | `nav-{n}.html`          | nav          | —             |
+| Footer           | `footer{n}`          | `footer-{n}.html`       | footer       | —             |
+
+`var.` = depends on design variant; always confirm against **`src/landing/_includes/`** in the reference repo. See **Reference behaviour (interactivity & responsive)**.
 
 
 ---
@@ -620,14 +653,17 @@ This is the validated step-by-step process from the hero-1 section export.
 
 Every section has desktop, tablet, and mobile variants. Fetch all three simultaneously with `get_design_context` **before writing a single line of HTML**. Starting early with incomplete design information leads to structural mistakes that are expensive to undo.
 
+**Do not re-fetch** `get_design_context` during HTML refinement. Work from the data and screenshots you already have, the compare tool, and saved notes. Call MCP again only if the Figma file changed or something is genuinely ambiguous — repeat calls add **rate-limit pressure** (see **Figma API rate limits & hygiene** below).
+
 After fetching, compare all three side by side and record:
 
 - Desktop: outer padding, inner gap, column widths, element order
 - Tablet: outer padding, inner gap, font size deltas
 - Mobile: stacking order, text alignment, image height, any elements that hide or reorder
 - Cards, buttons, dividers: corner radius, borders, shadows — note for markup and cross-check **Visual fidelity** and the same-category file in **`src/landing/_includes/`**
+- **Interactivity:** if **Standard Section Catalog** / Figma implies Swiper, accordion, countdown, sticky CTA, or CSS marquee icons, plan the **`data-*` hooks** and structure from **Reference behaviour** and [`landing.js`](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections/blob/main/src/landing/assets/js/landing.js) — not only static layout
 
-**Before writing any markup:** open [campaign-cart-landing-page-sections `src/landing/_includes/`](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections/tree/main/src/landing/_includes) and skim a partial for the **same section category** (e.g. hero → `hero-*.html`, FAQ → `faq-*.html`) so asset paths, inner max-width, positioning, and **visual treatment** (radius, borders, shadows) match shipped pages.
+**Before writing any markup:** open [campaign-cart-landing-page-sections `src/landing/_includes/`](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections/tree/main/src/landing/_includes) and skim a partial for the **same section category** (e.g. hero → `hero-*.html`, FAQ → `faq-*.html`) so asset paths, inner max-width, positioning, **visual treatment** (radius, borders, shadows), and **behaviour** (sliders, accordions, sticky CTAs, marquees) match shipped pages.
 
 Only once you have a clear picture of how the layout changes across all three breakpoints should you begin writing HTML. The responsive class decisions (`flex-col md:flex-row`, `hidden md:block`, etc.) should be obvious before you start, not discovered during.
 
@@ -686,6 +722,10 @@ When mobile layout reorders elements (e.g. heading above image, image above cont
 
 Download a PNG of each breakpoint node into `src/{slug}/_ref/`. These are used by the compare tool in Step 8 — without them the left side of the compare page will be empty.
 
+**Skip `save-ref.sh`** if `src/{slug}/_ref/` already contains the correct `{section}-desktop.png` / `tablet` / `mobile` for this export (e.g. you are iterating on HTML only). Re-run only when node IDs change or refs are missing. Each run hits Figma’s **`/v1/images/`** endpoint **three times** (expensive renders; low per-minute quota).
+
+Prefer running `save-ref` **once** when you are ready to use the compare page, rather than immediately after every partial edit in a tight loop (see **Figma API rate limits & hygiene**).
+
 ```bash
 ./scripts/save-ref.sh <slug> <section-name> <desktop-node-id> <tablet-node-id> <mobile-node-id>
 ```
@@ -710,6 +750,8 @@ src/novaburn-presale/_ref/
 ### Step 6 — Download Figma assets immediately
 
 Asset URLs from `get_design_context` expire in 7 days. Download all icons and images before previewing:
+
+**`export-node.sh`** uses the same **Figma image render** API as `save-ref.sh`. If you export several nodes back-to-back, run **`export-node.sh` sequentially** with a **short pause** (a few seconds) between invocations instead of parallel bursts — especially in the same minute as `save-ref.sh` (see **Figma API rate limits & hygiene**).
 
 ```bash
 # Download all assets — use a temporary extension first
@@ -776,9 +818,30 @@ Requires Figma ref images from Step 5. The compare page shows the Figma PNG on t
 
 **Refinement loop:** edit `_includes/{section}.html` → save → refresh `compare.html` → spot differences → repeat until it matches.
 
+### Figma API rate limits & hygiene
+
+Figma applies **per-minute** limits to **MCP / REST** usage. Heavy bursts come from the same sources:
+
+| Source | Why it adds pressure |
+| ------ | -------------------- |
+| **`get_design_context`** (3 breakpoints in parallel) | 3 simultaneous calls at export start — fine once per section; **re-fetching during refinement** multiplies usage fast |
+| **`save-ref.sh`** | **3** calls to **`/v1/images/`** per run (PNG renders; strict quota) |
+| **`export-node.sh`** | Same **`/v1/images/`** render path — **one call per node** |
+| **Back-to-back sections** | Quota is **per minute**, not per session |
+
+**Guidance:**
+
+1. **One MCP fetch per section** at the start — then refine from that data + compare; **don’t re-fetch** unless the design changed or something is unclear.
+2. **Run `save-ref.sh` when refs are missing or node IDs changed** — not after every HTML tweak if PNGs in `_ref/` are already correct.
+3. **Stagger** heavy work: prefer order **MCP (3) → HTML / curl assets → `export-node` one-by-one with gaps → `save-ref` once → `npm run compare`**. Avoid **`save-ref` + many `export-node` calls in the same burst**.
+4. **Batch `export-node.sh` sequentially** with a few seconds between runs when exporting many assets.
+5. If you hit **429 / throttling**, wait **~60 seconds** and retry; reduce parallel Figma work first.
+
 ### After every export — auto-open the compare tool
 
-At the end of every section export, automatically run these three commands. The node IDs are already known from the Figma URLs provided at the start — extract them and use them directly.
+At the end of a section export, refresh the compare workflow. The node IDs are already known from the Figma URLs — extract them and use them directly.
+
+**If reference PNGs are not yet in `_ref/`** (or you updated Figma node IDs), run `save-ref` **once**, then compare:
 
 ```bash
 ./scripts/save-ref.sh <slug> <section> <desktop-node-id> <tablet-node-id> <mobile-node-id>
@@ -786,11 +849,18 @@ npm run compare <slug> <section>
 open src/<slug>/_ref/compare.html
 ```
 
-Use the same `<section>` string for `save-ref.sh` and `npm run compare` so the correct `*-desktop.png` set is used when `_ref/` contains multiple sections.
+**If `_ref/` already has the right `{section}-*.png` set** (iterate-only pass), skip `save-ref` and run:
+
+```bash
+npm run compare <slug> <section>
+open src/<slug>/_ref/compare.html
+```
+
+Use the same `<section>` string for `save-ref.sh` and `npm run compare` when `_ref/` holds multiple section ref sets.
 
 Node ID format: take the `node-id` query param from the Figma URL and replace `-` with `:` (e.g. `143-10703` → `143:10703`).
 
-This opens the compare page immediately — the developer just needs `npm run dev` running to see the live iframe.
+The developer needs `npm run dev` running for the live iframe.
 
 ### Common mistakes
 
@@ -800,6 +870,8 @@ This opens the compare page immediately — the developer just needs `npm run de
 | Fixed column widths (`lg:w-[Npx]`)                                 | Use `flex-1` — widths are 1440px reference only                                                                                                                                                                                                                      |
 | Right padding on content column                                    | Move to the `max-w` container div                                                                                                                                                                                                                                    |
 | Missing inner `max-w-* mx-auto` wrapper                          | **Always required** on the main inner container — without it the section stretches edge-to-edge on wide monitors                                                                                                                                                     |
+| Re-fetching `get_design_context` on every HTML tweak                         | Work from the first fetch + compare; re-call MCP only when the file changed or something is unclear — reduces rate-limit pressure                                                                                                                                      |
+| Running `save-ref.sh` + many `export-node.sh` in one burst                 | Stagger image renders; skip `save-ref` when `_ref/` PNGs are already valid — see **Figma API rate limits & hygiene**                                                                                                                                                     |
 | Skipping the reference partial in campaign-cart-landing-page-sections | Open **`src/landing/_includes/`** in that repo and skim a same-category partial before coding — aligns assets, positioning, wrapper patterns, and visual treatment                                                                                                      |
 | Generic `rounded-md` / `rounded-lg` when reference uses `rounded-[Npx]` | Match the **same section family** in `src/landing/_includes/` — arbitrary radius is often intentional                                                                                                                                    |
 | Borders/shadows in Figma or reference, missing in export HTML        | Map strokes to `border*` and effects to `shadow*`; see **Visual fidelity**                                                                                                                                                                                            |
@@ -839,8 +911,9 @@ This opens the compare page immediately — the developer just needs `npm run de
 
 - Liquid partial generated in `_includes/`
 - Inner layout uses **`max-w-[1440px]` or `max-w-7xl`** with **`mx-auto`** (and usually **`w-full`**) on the main content wrapper — verified before handoff
-- **Reference partial** in [campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections) **`src/landing/_includes/`** reviewed for the same section type (layout, assets, positioning, radius/borders/shadows)
+- **Reference partial** in [campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections) **`src/landing/_includes/`** reviewed for the same section type (layout, assets, positioning, radius/borders/shadows, **interactivity / `data-*` hooks**)
 - Radius, borders, shadows checked against Figma and the reference partial — see **Visual fidelity**
+- **Figma API:** no unnecessary MCP re-fetch; `save-ref` / `export-node` staggered or skipped when refs already valid — see **Figma API rate limits & hygiene**
 - All asset refs use `campaign_asset` filter
 - All internal links use `campaign_link` filter
 - Text properties do NOT use `| default:` fallbacks — omit them entirely so missing variables are visible during dev/QA rather than silently showing placeholder text in production
