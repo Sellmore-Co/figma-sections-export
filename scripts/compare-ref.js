@@ -2,9 +2,16 @@
 // compare-ref.js — Generate a visual compare page (Figma ref vs live iframe)
 //
 // Usage:
-//   npm run compare <slug> [port]
+//   npm run compare <slug> [section] [port]
 //   node scripts/compare-ref.js hero-1
 //   node scripts/compare-ref.js hero-1 3001
+//   node scripts/compare-ref.js my-campaign nav-2
+//   node scripts/compare-ref.js my-campaign nav-2 3001
+//
+// If [section] is omitted, ref PNGs are chosen from *-desktop.png in _ref/
+// (alphabetically first prefix if multiple — a warning is printed).
+// If [section] is set, uses {section}-desktop.png / tablet / mobile explicitly.
+// If the 2nd argument is numeric only, it is treated as [port] (backward compatible).
 //
 // Requires:
 //   - Figma ref images in src/{slug}/_ref/ (run save-ref.sh first)
@@ -16,18 +23,34 @@
 const fs = require('fs');
 const path = require('path');
 
-const [, , slug, portArg] = process.argv;
-const parsedPort = parseInt(portArg, 10);
-if (portArg && isNaN(parsedPort)) {
-  console.error(`Invalid port "${portArg}" — must be a number. Did you mean: npm run compare ${slug}?`);
-  process.exit(1);
-}
-const port = parsedPort || 3000;
+const [, , slug, arg2, arg3] = process.argv;
 
 if (!slug) {
-  console.error('Usage: npm run compare <slug> [port]');
-  console.error('Example: npm run compare hero-1');
+  console.error('Usage: npm run compare <slug> [section] [port]');
+  console.error('Examples:');
+  console.error('  npm run compare hero-1');
+  console.error('  npm run compare hero-1 3001');
+  console.error('  npm run compare my-campaign nav-2');
+  console.error('  npm run compare my-campaign nav-2 3001');
   process.exit(1);
+}
+
+let explicitSection = null;
+let port = 3000;
+
+if (arg2 !== undefined) {
+  if (/^\d+$/.test(arg2)) {
+    port = parseInt(arg2, 10);
+  } else {
+    explicitSection = arg2;
+    if (arg3 !== undefined) {
+      if (!/^\d+$/.test(arg3)) {
+        console.error(`Invalid port "${arg3}" — must be a number.`);
+        process.exit(1);
+      }
+      port = parseInt(arg3, 10);
+    }
+  }
 }
 
 const srcDir = path.join(__dirname, '..', 'src', slug);
@@ -42,15 +65,41 @@ if (!fs.existsSync(srcDir)) {
 fs.mkdirSync(refDir, { recursive: true });
 
 const existingFiles = fs.readdirSync(refDir);
-const sectionName = detectSectionName(existingFiles);
+const prefixes = listDesktopPrefixes(existingFiles);
+
+let sectionName;
+
+if (explicitSection) {
+  const desktopPath = path.join(refDir, `${explicitSection}-desktop.png`);
+  if (!fs.existsSync(desktopPath)) {
+    console.error(
+      `No Figma ref for section "${explicitSection}": expected src/${slug}/_ref/${explicitSection}-desktop.png`
+    );
+    if (prefixes.length) {
+      console.error(`Available ref prefixes: ${prefixes.join(', ')}`);
+    } else {
+      console.error('No *-desktop.png files in _ref/ — run save-ref.sh first.');
+    }
+    process.exit(1);
+  }
+  sectionName = explicitSection;
+} else {
+  if (prefixes.length > 1) {
+    console.warn(
+      `Warning: multiple *-desktop.png ref sets in _ref/ (${prefixes.join(', ')}). Using "${prefixes[0]}". ` +
+        `Pass an explicit section: npm run compare ${slug} <section>`
+    );
+  }
+  sectionName = prefixes[0] || null;
+}
 
 const breakpoints = [
   { name: 'desktop', width: 1440 },
-  { name: 'tablet',  width: 768 },
-  { name: 'mobile',  width: 375 },
+  { name: 'tablet', width: 768 },
+  { name: 'mobile', width: 375 },
 ];
 
-const panels = breakpoints.map(bp => ({
+const panels = breakpoints.map((bp) => ({
   ...bp,
   figmaSrc: sectionName ? `${sectionName}-${bp.name}.png` : null,
   figmaExists: sectionName ? fs.existsSync(path.join(refDir, `${sectionName}-${bp.name}.png`)) : false,
@@ -67,9 +116,11 @@ if (sectionName) {
   console.log(`  No Figma refs found — run save-ref.sh to add them`);
 }
 
-function detectSectionName(files) {
-  const match = files.find(f => f.endsWith('-desktop.png') && !f.startsWith('rendered-'));
-  return match ? match.replace(/-desktop\.png$/, '') : null;
+function listDesktopPrefixes(files) {
+  const out = files
+    .filter((f) => f.endsWith('-desktop.png') && !f.startsWith('rendered-'))
+    .map((f) => f.replace(/-desktop\.png$/, ''));
+  return [...new Set(out)].sort();
 }
 
 function generateHtml(slug, liveUrl, panels) {

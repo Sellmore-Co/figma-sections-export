@@ -763,8 +763,12 @@ Generate a side-by-side compare page (Figma screenshot vs live iframe):
 
 ```bash
 npm run compare <slug>
+npm run compare <slug> <ref-prefix>
+npm run compare <slug> <ref-prefix> 3001
 open src/<slug>/_ref/compare.html
 ```
+
+`<ref-prefix>` matches the `save-ref.sh` section name (`{ref-prefix}-desktop.png`, etc.). If omitted and multiple ref sets exist in `_ref/`, the compare script picks deterministically and warns — pass `<ref-prefix>` to select which screenshot set to use.
 
 Requires Figma ref images from Step 5. The compare page shows the Figma PNG on the left and the live dev server in an iframe on the right, at all 3 breakpoints. The iframe updates live as you edit HTML — no re-run needed.
 
@@ -778,9 +782,11 @@ At the end of every section export, automatically run these three commands. The 
 
 ```bash
 ./scripts/save-ref.sh <slug> <section> <desktop-node-id> <tablet-node-id> <mobile-node-id>
-npm run compare <slug>
+npm run compare <slug> <section>
 open src/<slug>/_ref/compare.html
 ```
+
+Use the same `<section>` string for `save-ref.sh` and `npm run compare` so the correct `*-desktop.png` set is used when `_ref/` contains multiple sections.
 
 Node ID format: take the `node-id` query param from the Figma URL and replace `-` with `:` (e.g. `143-10703` → `143:10703`).
 
