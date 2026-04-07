@@ -118,6 +118,19 @@ Select your campaign from the list → opens `http://localhost:3000/{campaign-sl
 
 ---
 
+### Available commands
+
+| Command | Description |
+| ------- | ----------- |
+| `npm run dev` | Start the dev server with live reload |
+| `npm run build` | Production build |
+| `npm run compare <slug> [ref-prefix] [port]` | Open side-by-side Figma vs live compare page |
+| `npm run compress <slug>` | Optimise all images in `src/<slug>/assets/images/` — run after downloading Figma assets and before final handoff |
+
+**`npm run compress`** runs lossless/lossy compression on JPG, PNG, and WebP assets in-place. Run it once per section after all images are downloaded. Do not run it repeatedly on already-compressed files.
+
+---
+
 ## Intended Workflow
 
 This tool exports Figma sections as Liquid partials (`_includes/*.html`) that are assembled into a landing or presell page. The **unit of export is always a single section** — exporting section by section produces better results than attempting a full-page export in one pass.
@@ -684,6 +697,34 @@ After fetching, compare all three side by side and record:
 
 Only once you have a clear picture of how the layout changes across all three breakpoints should you begin writing HTML. The responsive class decisions (`flex-col md:flex-row`, `hidden md:block`, etc.) should be obvious before you start, not discovered during.
 
+### Step 1b — Trace the node tree before writing any HTML
+
+HTML nesting must mirror the Figma node tree exactly. Do **not** reorganize nodes based on what the content "means" semantically.
+
+**Rule:** Every Figma parent node becomes one `<div>` (or semantic element). Every child of that node becomes a direct child of that `<div>`. If Figma places a heading, a badge, and a description as siblings inside a parent with `gap: 12px`, all three go inside one `<div class="flex flex-col gap-[12px]">` — even if you think "the heading logically belongs with the title" or "the badge is a separate component."
+
+```html
+<!-- Wrong — regrouped by semantic meaning, invented by the developer -->
+<div class="heading-group">
+  <h2>Title</h2>
+  <span>Badge</span>
+</div>
+<div class="body-group">
+  <p>Description</p>
+</div>
+
+<!-- Correct — mirrors Figma: all three are siblings inside one parent with gap-[12px] -->
+<div class="flex flex-col gap-[12px]">
+  <h2>Title</h2>
+  <span>Badge</span>
+  <p>Description</p>
+</div>
+```
+
+**Why it matters:** Regrouping breaks spacing. Figma's `gap` values only work correctly when parent-child relationships match. Splitting siblings into separate wrappers produces uncontrolled gaps that get patched with ad-hoc padding — which then breaks at other breakpoints.
+
+**How to enforce it:** Trace node IDs (e.g. `6205:2433`) from the `get_design_context` output rather than naming groups by content. IDs force you to follow the actual tree; naming groups by content invites interpretation and reordering.
+
 ### Step 2 — Use the 4-layer HTML structure (always)
 
 ```
@@ -804,6 +845,14 @@ Running this on frame-wrapped SVGs is harmless (the attribute will already be ab
 # Image fills don't surface as URLs in get_design_context output
 ```
 
+Once all assets are downloaded and renamed, run image compression:
+
+```bash
+npm run compress <slug>
+```
+
+This optimises all JPG, PNG, and WebP files in `src/<slug>/assets/images/` in-place. Run once after downloading — do not repeat on already-compressed files.
+
 ### Step 7 — Preview project structure
 
 ```
@@ -887,6 +936,7 @@ The developer needs `npm run dev` running for the live iframe.
 
 | Mistake                                                            | Fix                                                                                                                                                                                                                                                                  |
 | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Regrouping nodes by semantic meaning                               | HTML nesting must mirror the Figma node tree exactly. If Figma puts three siblings inside one parent with `gap: 12px`, they all go in one `<div class="flex flex-col gap-[12px]">` — never split them into invented sub-groups. Trace node IDs to enforce this.       |
 | Fixed column widths (`lg:w-[Npx]`)                                 | Use `flex-1` — widths are 1440px reference only                                                                                                                                                                                                                      |
 | Right padding on content column                                    | Move to the `max-w` container div                                                                                                                                                                                                                                    |
 | Missing inner `max-w-* mx-auto` wrapper                          | **Always required** on the main inner container — without it the section stretches edge-to-edge on wide monitors                                                                                                                                                     |
@@ -907,6 +957,16 @@ The developer needs `npm run dev` running for the live iframe.
 | `w-auto` image stretches inside `flex flex-col`                    | `align-items: stretch` overrides `w-auto` — add `self-start` to the `<img>`                                                                                                                                                                                          |
 | p-big font size uses `lg:` prefix (`text-[18px] lg:text-[20px]`)   | Tablet is also 20px — always use `md:` prefix: `text-[18px] md:text-[20px]`                                                                                                                                                                                          |
 | p-small font size uses `md:` prefix (`text-[14px] md:text-[16px]`) | Tablet stays at 14px — always use `lg:` prefix: `text-[14px] lg:text-[16px]`                                                                                                                                                                                         |
+| Liquid for loops with dynamic variable names                       | LiquidJS does not support dynamic variable name construction (e.g. `{{ section_item_{{ i }}_title }}`). Use static numbered variables in frontmatter: `item_1_title`, `item_2_title`, etc. and repeat markup per item.                                                |
+| Tablet-only `md:` padding persists on desktop                      | A `md:px-[40px]` rule applies at desktop too unless you add a `lg:px-[N]` override. Always check whether the padding value changes at desktop and emit the correct `lg:` value explicitly.                                                                           |
+| Using `order-*` for structurally different breakpoint layouts      | CSS `order` only reorders within the same flex container and breaks tab order. When mobile and desktop are structurally different (e.g. stacked vs side-by-side with different element sequences), duplicate the element with `md:hidden` / `hidden md:block` instead — see **Step 4**. |
+| Image with overlaid badges rebuilt in HTML                         | If a Figma image has badges, text, or overlays composited on top, don't recreate the composition in HTML. Name the parent node `img-group:` and export as a single canvas-rendered PNG — see **Pattern 3**.                                                           |
+| Copying pixel fallbacks from MCP instead of using typography table | `get_design_context` outputs fallbacks from shared component nodes which always reflect desktop values regardless of breakpoint. Read responsive sizes from the typography table in **Design Tokens**, not from MCP output pixel fallbacks.                             |
+| Duplicated mobile element placed outside its flex container        | When duplicating an element for mobile visibility (e.g. heading above image), the duplicate must be inside the same flex container to inherit gap spacing. Placing it outside creates an uncontrolled gap that requires manual padding patches.                        |
+| Swiper slide images expand to natural height                       | Swiper slides need `h-full` on the slide wrapper; images need `w-full h-full object-cover` (or `object-contain`) to fill the slide. Without explicit height the slide grows to the image's natural dimensions.                                                        |
+| Video/media thumbnail expands to natural height                    | The video or thumbnail wrapper needs an explicit height or `aspect-*` class (e.g. `aspect-video`) to constrain it. Without this the element grows to its natural image dimensions.                                                                                    |
+| Swiper/carousel nav arrows hand-coded with generic SVGs            | Don't invent new arrow SVGs. Copy `data-swiper-prev` / `data-swiper-next` button markup from the closest reference partial for the same section category — arrow style and size must match shipped pages.                                                              |
+| Setting `gap-0` when layout direction changes at a breakpoint      | When switching from `flex-col` to `flex-row` at a breakpoint, the gap usually also changes (e.g. `gap-4` vertical → `gap-8` horizontal). Set the correct gap value per breakpoint explicitly — don't use `gap-0` as a reset.                                          |
 
 
 ---
