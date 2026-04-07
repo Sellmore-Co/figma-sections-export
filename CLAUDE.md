@@ -684,6 +684,34 @@ After fetching, compare all three side by side and record:
 
 Only once you have a clear picture of how the layout changes across all three breakpoints should you begin writing HTML. The responsive class decisions (`flex-col md:flex-row`, `hidden md:block`, etc.) should be obvious before you start, not discovered during.
 
+### Step 1b — Trace the node tree before writing any HTML
+
+HTML nesting must mirror the Figma node tree exactly. Do **not** reorganize nodes based on what the content "means" semantically.
+
+**Rule:** Every Figma parent node becomes one `<div>` (or semantic element). Every child of that node becomes a direct child of that `<div>`. If Figma places a heading, a badge, and a description as siblings inside a parent with `gap: 12px`, all three go inside one `<div class="flex flex-col gap-[12px]">` — even if you think "the heading logically belongs with the title" or "the badge is a separate component."
+
+```html
+<!-- Wrong — regrouped by semantic meaning, invented by the developer -->
+<div class="heading-group">
+  <h2>Title</h2>
+  <span>Badge</span>
+</div>
+<div class="body-group">
+  <p>Description</p>
+</div>
+
+<!-- Correct — mirrors Figma: all three are siblings inside one parent with gap-[12px] -->
+<div class="flex flex-col gap-[12px]">
+  <h2>Title</h2>
+  <span>Badge</span>
+  <p>Description</p>
+</div>
+```
+
+**Why it matters:** Regrouping breaks spacing. Figma's `gap` values only work correctly when parent-child relationships match. Splitting siblings into separate wrappers produces uncontrolled gaps that get patched with ad-hoc padding — which then breaks at other breakpoints.
+
+**How to enforce it:** Trace node IDs (e.g. `6205:2433`) from the `get_design_context` output rather than naming groups by content. IDs force you to follow the actual tree; naming groups by content invites interpretation and reordering.
+
 ### Step 2 — Use the 4-layer HTML structure (always)
 
 ```
@@ -887,6 +915,7 @@ The developer needs `npm run dev` running for the live iframe.
 
 | Mistake                                                            | Fix                                                                                                                                                                                                                                                                  |
 | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Regrouping nodes by semantic meaning                               | HTML nesting must mirror the Figma node tree exactly. If Figma puts three siblings inside one parent with `gap: 12px`, they all go in one `<div class="flex flex-col gap-[12px]">` — never split them into invented sub-groups. Trace node IDs to enforce this.       |
 | Fixed column widths (`lg:w-[Npx]`)                                 | Use `flex-1` — widths are 1440px reference only                                                                                                                                                                                                                      |
 | Right padding on content column                                    | Move to the `max-w` container div                                                                                                                                                                                                                                    |
 | Missing inner `max-w-* mx-auto` wrapper                          | **Always required** on the main inner container — without it the section stretches edge-to-edge on wide monitors                                                                                                                                                     |
