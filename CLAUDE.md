@@ -118,6 +118,19 @@ Select your campaign from the list → opens `http://localhost:3000/{campaign-sl
 
 ---
 
+### Available commands
+
+| Command | Description |
+| ------- | ----------- |
+| `npm run dev` | Start the dev server with live reload |
+| `npm run build` | Production build |
+| `npm run compare <slug> [ref-prefix] [port]` | Open side-by-side Figma vs live compare page |
+| `npm run compress <slug>` | Optimise all images in `src/<slug>/assets/images/` — run after downloading Figma assets and before final handoff |
+
+**`npm run compress`** runs lossless/lossy compression on JPG, PNG, and WebP assets in-place. Run it once per section after all images are downloaded. Do not run it repeatedly on already-compressed files.
+
+---
+
 ## Intended Workflow
 
 This tool exports Figma sections as Liquid partials (`_includes/*.html`) that are assembled into a landing or presell page. The **unit of export is always a single section** — exporting section by section produces better results than attempting a full-page export in one pass.
@@ -831,6 +844,14 @@ Running this on frame-wrapped SVGs is harmless (the attribute will already be ab
 # Photo assets — export manually from Figma (right-click frame → Export)
 # Image fills don't surface as URLs in get_design_context output
 ```
+
+Once all assets are downloaded and renamed, run image compression:
+
+```bash
+npm run compress <slug>
+```
+
+This optimises all JPG, PNG, and WebP files in `src/<slug>/assets/images/` in-place. Run once after downloading — do not repeat on already-compressed files.
 
 ### Step 7 — Preview project structure
 
