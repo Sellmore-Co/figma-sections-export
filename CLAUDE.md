@@ -278,11 +278,13 @@ Text layers in the Figma file use default naming (layer content or generic IDs).
 
 ```html
 <section class="section-hero bg-surface-alt py-16 md:py-24">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+  <div class="max-w-[1440px] mx-auto w-full px-[15px] md:px-[26px] lg:px-[60px] xl:px-[120px]">
     <!-- content -->
   </div>
 </section>
 ```
+
+Use this 4-step padding scale when the design calls for large desktop side padding (~120px). `lg:px-[120px]` fires at 1024px and leaves only 784px for content — too narrow for wide text or two-column layouts. The bridging `lg:px-[60px]` covers 1024–1279px; `xl:px-[120px]` kicks in at 1280px where there is enough room.
 
 ### Mandatory inner max-width
 
@@ -945,7 +947,8 @@ The developer needs `npm run dev` running for the live iframe.
 | Skipping the reference partial in campaign-cart-landing-page-sections | Open **`src/landing/_includes/`** in that repo and skim a same-category partial before coding — aligns assets, positioning, wrapper patterns, and visual treatment                                                                                                      |
 | Generic `rounded-md` / `rounded-lg` when reference uses `rounded-[Npx]` | Match the **same section family** in `src/landing/_includes/` — arbitrary radius is often intentional                                                                                                                                    |
 | Borders/shadows in Figma or reference, missing in export HTML        | Map strokes to `border*` and effects to `shadow*`; see **Visual fidelity**                                                                                                                                                                                            |
-| Large container side padding applied too early                     | For large values like `px-[240px]` or `px-[160px]`, prefer `xl:` over `lg:` unless Figma explicitly requires `lg`                                                                                                                                                    |
+| Large container side padding applied too early                     | For large values like `px-[120px]` (120px/side = 240px total), `px-[160px]`, or `px-[240px]`, prefer `xl:` over `lg:`. Use the 4-step scale: `px-[15px] md:px-[26px] lg:px-[60px] xl:px-[120px]` — `lg:px-[120px]` fires at 1024px and leaves only 784px for content, breaking wide text and two-column layouts between 1024–1220px |
+| `lg:px-[Npx]` exceeding 80px/side on the main container wrapper   | Never write `lg:px-[120px]` or larger on `max-w-[1440px] mx-auto` — use the 4-step scale instead. Scale the bridge proportionally: 120px desktop → `lg:px-[60px] xl:px-[120px]`; 140px desktop → `lg:px-[70px] xl:px-[140px]`. Internal elements (cards, buttons, accordion rows) with small `lg:px-[Npx]` values (≤40px) are unaffected — this rule applies to the main section container only |
 | `whitespace-nowrap` on body/bullet text                            | Only use on single-word UI labels                                                                                                                                                                                                                                    |
 | Tailwind CDN in section partial                                    | CDN belongs in `_layouts/base.html` only                                                                                                                                                                                                                             |
 | CSS tokens defined inline                                          | Always a separate `css/tokens.css`, listed in frontmatter `styles:`                                                                                                                                                                                                  |
