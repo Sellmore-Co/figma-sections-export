@@ -7,7 +7,7 @@
 # Example:
 #   ./scripts/save-ref.sh section-preview hero-2 143:10703 143:10748 143:13028
 #
-# Requires FIGMA_ACCESS_TOKEN in .env (copy .env.example → .env)
+# Requires FIGMA_ACCESS_TOKEN and FIGMA_FILE_KEY in .env (copy .env.example → .env)
 
 set -e
 
@@ -26,7 +26,16 @@ SECTION="$2"
 DESKTOP_ID="$3"
 TABLET_ID="$4"
 MOBILE_ID="$5"
-FILE_KEY="ia7650Y3lLte4WVYARNvSX"
+FILE_KEY="$FIGMA_FILE_KEY"
+
+if [ -z "$FILE_KEY" ]; then
+  echo "Error: FIGMA_FILE_KEY not set. Add it to your .env file:"
+  echo "  FIGMA_FILE_KEY=your-figma-file-key"
+  echo ""
+  echo "Find the file key in the Figma URL:"
+  echo "  figma.com/design/<FILE_KEY>/..."
+  exit 1
+fi
 
 if [ -z "$CAMPAIGN" ] || [ -z "$SECTION" ] || [ -z "$DESKTOP_ID" ]; then
   echo "Usage: $0 <campaign> <section> <desktop-id> [tablet-id] [mobile-id]"
