@@ -13,7 +13,7 @@
 #   ./scripts/export-node.sh 143:10744 src/section-preview/assets/images/hero-2-photo.png
 #   ./scripts/export-node.sh 143:14240 src/bottomcta-3/assets/images/bottomcta-3-hero.png 2 img-group
 #
-# Requires FIGMA_ACCESS_TOKEN in .env
+# Requires FIGMA_ACCESS_TOKEN and FIGMA_FILE_KEY in .env
 
 set -e
 
@@ -30,7 +30,16 @@ NODE_ID="$1"
 OUTPUT="$2"
 SCALE="${3:-2}"
 EXPORT_TYPE="${4:-generic}"
-FILE_KEY="ia7650Y3lLte4WVYARNvSX"
+FILE_KEY="$FIGMA_FILE_KEY"
+
+if [ -z "$FILE_KEY" ]; then
+  echo "Error: FIGMA_FILE_KEY not set. Add it to your .env file:"
+  echo "  FIGMA_FILE_KEY=your-figma-file-key"
+  echo ""
+  echo "Find the file key in the Figma URL:"
+  echo "  figma.com/design/<FILE_KEY>/..."
+  exit 1
+fi
 
 if [ -z "$NODE_ID" ] || [ -z "$OUTPUT" ]; then
   echo "Usage: $0 <node-id> <output-path> [scale] [export-type]"
