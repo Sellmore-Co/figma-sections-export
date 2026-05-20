@@ -4,9 +4,9 @@ This repo builds an export script that reads a Figma file via the REST API and g
 
 **Figma file:** [https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/Debranded-Sections](https://www.figma.com/design/ia7650Y3lLte4WVYARNvSX/Debranded-Sections)
 
-**Reference implementation:** [campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections) — canonical example of exported section partials, asset structure, JS conventions, and page composition.
+**Reference implementation:** [campaign-cart-starter-templates](https://github.com/NextCommerceCo/campaign-cart-starter-templates) — canonical example of exported section partials, asset structure, JS conventions, and page composition.
 
-**Before generating HTML for an export:** in [campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections), open **`src/landing/_includes/`** ([browse on GitHub](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections/tree/main/src/landing/_includes)) and skim at least one partial that matches the section type you are exporting (e.g. hero → `hero-*.html`, FAQ → `faq-*.html`). Copy **patterns**, not marketing copy: outer `section` vs inner wrapper, `max-w-*` + `mx-auto`, horizontal padding, how images are constrained and positioned (`object-*`, flex vs absolute columns), card/list structure, and how **radius, borders, and shadows** are written (see **Visual fidelity**). *This path is in the reference repo — not necessarily the same as your local preview campaign folder.* If an older partial disagrees with the rest of this document on tokens or naming, **this document (`CLAUDE.md`) wins**.
+**Before generating HTML for an export:** in [campaign-cart-starter-templates](https://github.com/NextCommerceCo/campaign-cart-starter-templates), open **`src/landing/_includes/`** ([browse on GitHub](https://github.com/NextCommerceCo/campaign-cart-starter-templates/tree/main/src/landing/_includes)) and skim at least one partial that matches the section type you are exporting (e.g. hero → `hero-*.html`, FAQ → `faq-*.html`). Copy **patterns**, not marketing copy: outer `section` vs inner wrapper, `max-w-*` + `mx-auto`, horizontal padding, how images are constrained and positioned (`object-*`, flex vs absolute columns), card/list structure, and how **radius, borders, and shadows** are written (see **Visual fidelity**). *This path is in the reference repo — not necessarily the same as your local preview campaign folder.* If an older partial disagrees with the rest of this document on tokens or naming, **this document (`CLAUDE.md`) wins**.
 
 ---
 
@@ -49,7 +49,7 @@ Select **Figma** from the plugin list, or add it manually to your Claude Code MC
   "mcpServers": {
     "figma": {
       "command": "npx",
-      "args": ["-y", "@figma/mcp-server"],
+      "args": ["-y", "figma-mcp"],
       "env": {
         "FIGMA_ACCESS_TOKEN": "your-figma-personal-access-token"
       }
@@ -286,6 +286,8 @@ Text layers in the Figma file use default naming (layer content or generic IDs).
 
 Use this 4-step padding scale when the design calls for large desktop side padding (~120px). `lg:px-[120px]` fires at 1024px and leaves only 784px for content — too narrow for wide text or two-column layouts. The bridging `lg:px-[60px]` covers 1024–1279px; `xl:px-[120px]` kicks in at 1280px where there is enough room.
 
+**`--container/spacing-sides-standard`** is a Figma spacing variable used on some section frames for outer horizontal padding (fallback `120px`). Treat it identically to a hard-coded `120px` value — apply the 4-step scale on export: `px-[15px] md:px-[26px] lg:px-[60px] xl:px-[120px]`.
+
 ### Mandatory inner max-width
 
 - `<section>` may be full-bleed for backgrounds.
@@ -295,7 +297,7 @@ Use this 4-step padding scale when the design calls for large desktop side paddi
 
 ### Visual fidelity (radius, borders, shadows)
 
-**Source of truth:** Prefer the **same section family** in [campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections) under **`src/landing/_includes/`** over generic Tailwind guesses. Shipped partials encode how subtle UI is done — e.g. primary CTAs often use **`rounded-[6px]`** with **`bg-[var(--brand-primary)]`**, FAQ-style rows often use **`border-t` / `border-b`** with **`border-[rgba(0,0,0,0.16)]`**, and image columns that clip content use **`overflow-hidden`** on the wrapper plus `object-*` / sizing as in the reference. Use **`rounded-[Npx]`** when Figma specifies a radius and the reference uses arbitrary values — do not default to `rounded-md` / `rounded-lg` unless both Figma and the reference agree.
+**Source of truth:** Prefer the **same section family** in [campaign-cart-starter-templates](https://github.com/NextCommerceCo/campaign-cart-starter-templates) under **`src/landing/_includes/`** over generic Tailwind guesses. Shipped partials encode how subtle UI is done — e.g. primary CTAs often use **`rounded-[6px]`** with **`bg-[var(--brand-primary)]`**, FAQ-style rows often use **`border-t` / `border-b`** with **`border-[rgba(0,0,0,0.16)]`**, and image columns that clip content use **`overflow-hidden`** on the wrapper plus `object-*` / sizing as in the reference. Use **`rounded-[Npx]`** when Figma specifies a radius and the reference uses arbitrary values — do not default to `rounded-md` / `rounded-lg` unless both Figma and the reference agree.
 
 `get_design_context` often omits strokes, corner radius, or shadows. After comparing breakpoints, check the Figma screenshot for cards, buttons, and dividers — then align classes with **both** Figma and the closest reference partial.
 
@@ -518,7 +520,7 @@ Use Tailwind utilities for layout (flex, grid, spacing, responsive) and custom C
 
 All interactivity is powered by a **single unified file**: `assets/js/landing.js`. Do not create per-section JS files. New interactive patterns must be added to `landing.js` using data attributes as the hook contract.
 
-**Canonical implementation** (attribute contracts and comments): [campaign-cart-landing-page-sections `landing.js`](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections/blob/main/src/landing/assets/js/landing.js).
+**Canonical implementation** (attribute contracts and comments): [campaign-cart-starter-templates `landing.js`](https://github.com/NextCommerceCo/campaign-cart-starter-templates/blob/main/src/landing/assets/js/landing.js).
 
 **Carousel/slider sections use Swiper** (loaded via `base.html`). The script finds **`[data-swiper]`** on the `.swiper` element and reads **`data-slides`**, **`data-gap`**, **`data-loop`**, etc. from the nearest **`[data-swiper-root]`** ancestor (or legacy wrappers). Put breakpoint attributes on the root; include prev/next hooks if the design has arrows.
 
@@ -563,17 +565,17 @@ Optional: FAQ-style rows in reference partials may include **`[data-faq-vbar]`**
 
 ## Reference behaviour (interactivity & responsive)
 
-Shipped behaviour for composed landing pages lives in **[campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections)**:
+Shipped behaviour for composed landing pages lives in **[campaign-cart-starter-templates](https://github.com/NextCommerceCo/campaign-cart-starter-templates)**:
 
-- **[`src/landing/assets/js/landing.js`](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections/blob/main/src/landing/assets/js/landing.js)** — accordion, Swiper, countdown (and attribute contracts in file comments).
+- **[`src/landing/assets/js/landing.js`](https://github.com/NextCommerceCo/campaign-cart-starter-templates/blob/main/src/landing/assets/js/landing.js)** — accordion, Swiper, countdown (and attribute contracts in file comments).
 - **`src/landing/_includes/`** — how each section wires markup, responsive classes, and any CSS-only patterns (e.g. icon marquees).
 
 When the Figma section matches a **category** below, **before finalizing HTML** open the **same or closest** reference partial (e.g. `testimonials-1.html`, `faq-1.html`, `icons-1.html`, `cta-1.html`) and **mirror structure and `data-*` hooks**, not only layout and visuals.
 
 | Recognize (Figma / catalog) | Behaviour | Reference to copy |
 | --------------------------- | --------- | ----------------- |
-| Testimonials, Reviews, UGC, Before & After; Ingredients carousels | **Swiper** — `data-swiper-root`, `data-swiper`, `data-slides*`, `data-gap*`, `data-loop*`, prev/next, optional pagination | e.g. `testimonials-1.html`, `reviews-1.html`; contracts in `landing.js` |
-| FAQ; accordions in Benefits / Ingredients / problem-solution | **Accordion** — `data-accordion`, `data-accordion-item`, `data-accordion-toggle`, `data-accordion-panel`, `data-accordion-icon` | e.g. `faq-1.html`; matching benefits/ingredients partials |
+| Testimonials, Reviews, UGC, Before & After; Ingredients carousels | **Swiper** — `data-swiper-root`, `data-swiper`, `data-slides*`, `data-gap*`, `data-loop*`, prev/next, optional pagination. Slider nav assets appear under two naming conventions in Figma — both are equivalent and map to the same exported files: arrows are either `img:slider-nav-arrowleft.svg` / `img:slider-nav-arrowright.svg` (most sections) or `img:navigation-arrowleft.svg` / `img:navigation-arrowright.svg` (some UGC sections); dots are either `img:slidernav-dot-current.svg` / `img:slidernav-dot.svg` or `img:navigation-dot-current.svg` / `img:navigation-dot.svg`. Reuse the same asset file regardless of which name appears in Figma. | e.g. `testimonials-1.html`, `reviews-1.html`; contracts in `landing.js` |
+| FAQ; accordions in Benefits / Ingredients / problem-solution | **Accordion** — `data-accordion`, `data-accordion-item`, `data-accordion-toggle`, `data-accordion-panel`, `data-accordion-icon`. In Figma the toggle element may be named `span.faq-opener` — treat it as the accordion toggle regardless of layer name. FAQ dividers appear as `img:divider-horizontal-fullw-grey.svg` in Figma; convert to `border-b border-[rgba(0,0,0,0.16)]` CSS on export (do not use the image asset). | e.g. `faq-1.html`; matching benefits/ingredients partials |
 | Icons strips with infinite / mobile ticker | Often **CSS marquee** (`@keyframes`, duplicated row), not `landing.js` | e.g. `icons-1.html` |
 | **CTA** / **bottom CTA** with fixed bar on small viewports | **Sticky / mobile CTA** — responsive visibility (`md:hidden` / `lg:block`), fixed or sticky wrapper; some reference partials use **section-specific** `data-*` and inline script — **match that partial** until unified in `landing.js` | e.g. `cta-1.html`, `bottomcta-1.html` |
 | Urgency / offer timers | **Countdown** — `data-countdown`, `data-duration-minutes`, `data-storage-key`, `data-countdown-hrs` / `min` / `sec` | Partial using countdown + `landing.js` |
@@ -620,7 +622,8 @@ Frame names use `{category}{number}-{breakpoint}` (e.g. `hero1-desktop`). Export
 | Results          | `results{n}`         | `results-{n}.html`      | social-proof | —             |
 | Icons            | `icons{n}`           | `icons-{n}.html`        | social-proof | CSS marquee   |
 | Guarantee        | `guarantee{n}`       | `guarantee-{n}.html`    | trust        | —             |
-| Bottom CTA       | `bottomcta{n}`       | `bottomcta-{n}.html`    | cta          | Sticky CTA (var.) |
+| Science          | `science{n}`         | `science-{n}.html`      | content      | —             |
+| Bottom CTA       | `bottomcta{n}` or `sticky{n}` | `bottomcta-{n}.html` | cta     | Sticky CTA (var.) |
 | FAQ              | `faq{n}`             | `faq-{n}.html`          | faq          | Accordion     |
 | Media            | `media{n}`           | `media-{n}.html`        | content      | Swiper / video |
 | Nav              | `nav{n}`             | `nav-{n}.html`          | nav          | —             |
@@ -693,9 +696,9 @@ After fetching, compare all three side by side and record:
 - Tablet: outer padding, inner gap, font size deltas
 - Mobile: stacking order, text alignment, image height, any elements that hide or reorder
 - Cards, buttons, dividers: corner radius, borders, shadows — note for markup and cross-check **Visual fidelity** and the same-category file in **`src/landing/_includes/`**
-- **Interactivity:** if **Standard Section Catalog** / Figma implies Swiper, accordion, countdown, sticky CTA, or CSS marquee icons, plan the **`data-*` hooks** and structure from **Reference behaviour** and [`landing.js`](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections/blob/main/src/landing/assets/js/landing.js) — not only static layout
+- **Interactivity:** if **Standard Section Catalog** / Figma implies Swiper, accordion, countdown, sticky CTA, or CSS marquee icons, plan the **`data-*` hooks** and structure from **Reference behaviour** and [`landing.js`](https://github.com/NextCommerceCo/campaign-cart-starter-templates/blob/main/src/landing/assets/js/landing.js) — not only static layout
 
-**Before writing any markup:** open [campaign-cart-landing-page-sections `src/landing/_includes/`](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections/tree/main/src/landing/_includes) and skim a partial for the **same section category** (e.g. hero → `hero-*.html`, FAQ → `faq-*.html`) so asset paths, inner max-width, positioning, **visual treatment** (radius, borders, shadows), and **behaviour** (sliders, accordions, sticky CTAs, marquees) match shipped pages.
+**Before writing any markup:** open [campaign-cart-starter-templates `src/landing/_includes/`](https://github.com/NextCommerceCo/campaign-cart-starter-templates/tree/main/src/landing/_includes) and skim a partial for the **same section category** (e.g. hero → `hero-*.html`, FAQ → `faq-*.html`) so asset paths, inner max-width, positioning, **visual treatment** (radius, borders, shadows), and **behaviour** (sliders, accordions, sticky CTAs, marquees) match shipped pages.
 
 Only once you have a clear picture of how the layout changes across all three breakpoints should you begin writing HTML. The responsive class decisions (`flex-col md:flex-row`, `hidden md:block`, etc.) should be obvious before you start, not discovered during.
 
@@ -944,7 +947,7 @@ The developer needs `npm run dev` running for the live iframe.
 | Missing inner `max-w-* mx-auto` wrapper                          | **Always required** on the main inner container — without it the section stretches edge-to-edge on wide monitors                                                                                                                                                     |
 | Re-fetching `get_design_context` on every HTML tweak                         | Work from the first fetch + compare; re-call MCP only when the file changed or something is unclear — reduces rate-limit pressure                                                                                                                                      |
 | Running `save-ref.sh` + many `export-node.sh` in one burst                 | Stagger image renders; skip `save-ref` when `_ref/` PNGs are already valid — see **Figma API rate limits & hygiene**                                                                                                                                                     |
-| Skipping the reference partial in campaign-cart-landing-page-sections | Open **`src/landing/_includes/`** in that repo and skim a same-category partial before coding — aligns assets, positioning, wrapper patterns, and visual treatment                                                                                                      |
+| Skipping the reference partial in campaign-cart-starter-templates | Open **`src/landing/_includes/`** in that repo and skim a same-category partial before coding — aligns assets, positioning, wrapper patterns, and visual treatment                                                                                                      |
 | Generic `rounded-md` / `rounded-lg` when reference uses `rounded-[Npx]` | Match the **same section family** in `src/landing/_includes/` — arbitrary radius is often intentional                                                                                                                                    |
 | Borders/shadows in Figma or reference, missing in export HTML        | Map strokes to `border*` and effects to `shadow*`; see **Visual fidelity**                                                                                                                                                                                            |
 | Large container side padding applied too early                     | For large values like `px-[120px]` (120px/side = 240px total), `px-[160px]`, or `px-[240px]`, prefer `xl:` over `lg:`. Use the 4-step scale: `px-[15px] md:px-[26px] lg:px-[60px] xl:px-[120px]` — `lg:px-[120px]` fires at 1024px and leaves only 784px for content, breaking wide text and two-column layouts between 1024–1220px |
@@ -995,7 +998,7 @@ The developer needs `npm run dev` running for the live iframe.
 
 - Liquid partial generated in `_includes/`
 - Inner layout uses **`max-w-[1440px]` or `max-w-7xl`** with **`mx-auto`** (and usually **`w-full`**) on the main content wrapper — verified before handoff
-- **Reference partial** in [campaign-cart-landing-page-sections](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections) **`src/landing/_includes/`** reviewed for the same section type (layout, assets, positioning, radius/borders/shadows, **interactivity / `data-*` hooks**)
+- **Reference partial** in [campaign-cart-starter-templates](https://github.com/NextCommerceCo/campaign-cart-starter-templates) **`src/landing/_includes/`** reviewed for the same section type (layout, assets, positioning, radius/borders/shadows, **interactivity / `data-*` hooks**)
 - Radius, borders, shadows checked against Figma and the reference partial — see **Visual fidelity**
 - **Figma API:** no unnecessary MCP re-fetch; `save-ref` / `export-node` staggered or skipped when refs already valid — see **Figma API rate limits & hygiene**
 - All asset refs use `campaign_asset` filter
