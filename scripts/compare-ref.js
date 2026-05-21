@@ -15,7 +15,7 @@
 //
 // Requires:
 //   - Figma ref images in src/{slug}/_ref/ (run save-ref.sh first)
-//   - Dev server running at http://localhost:{port}/{slug}/
+//   - Dev server running; live URL uses _data/campaigns.json entry_url when set
 //
 // Output:
 //   src/{slug}/_ref/compare.html  ← open this in a browser
@@ -55,12 +55,13 @@ if (arg2 !== undefined) {
 
 const srcDir = path.join(__dirname, '..', 'src', slug);
 const refDir = path.join(srcDir, '_ref');
-const liveUrl = `http://localhost:${port}/${slug}/`;
 
 if (!fs.existsSync(srcDir)) {
   console.error(`Campaign not found: src/${slug}/`);
   process.exit(1);
 }
+
+const liveUrl = buildLiveUrl(port, slug);
 
 fs.mkdirSync(refDir, { recursive: true });
 
@@ -110,6 +111,7 @@ fs.writeFileSync(htmlPath, generateHtml(slug, liveUrl, panels));
 
 console.log(`\n✓ Compare page ready → src/${slug}/_ref/compare.html`);
 console.log(`  open src/${slug}/_ref/compare.html`);
+console.log(`  live URL: ${liveUrl}`);
 if (sectionName) {
   console.log(`  Figma refs: ${sectionName}-*.png`);
 } else {
@@ -121,6 +123,32 @@ function listDesktopPrefixes(files) {
     .filter((f) => f.endsWith('-desktop.png') && !f.startsWith('rendered-'))
     .map((f) => f.replace(/-desktop\.png$/, ''));
   return [...new Set(out)].sort();
+}
+
+function buildLiveUrl(port, slug) {
+  const entryUrl = getCampaignEntryUrl(slug);
+  return `http://localhost:${port}/${slug}/${normalizeEntryUrl(entryUrl)}`;
+}
+
+function getCampaignEntryUrl(slug) {
+  const campaignsPath = path.join(__dirname, '..', '_data', 'campaigns.json');
+  if (!fs.existsSync(campaignsPath)) return '';
+
+  try {
+    const campaigns = JSON.parse(fs.readFileSync(campaignsPath, 'utf8'));
+    return campaigns?.[slug]?.entry_url || '';
+  } catch {
+    return '';
+  }
+}
+
+function normalizeEntryUrl(entryUrl) {
+  if (typeof entryUrl !== 'string') return '';
+  const trimmed = entryUrl
+    .trim()
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\.html$/i, '');
+  return trimmed ? `${trimmed}/` : '';
 }
 
 function generateHtml(slug, liveUrl, panels) {

@@ -19,7 +19,7 @@ The export tool accesses your Figma file via the API. A standard shared link is 
 
 - File has a **Sections** page
 - Section frames are **top-level** on the Sections page — not nested inside other frames
-- Section frames follow the naming pattern `{category}{number}-{breakpoint}` — e.g. `hero1-desktop`, `hero1-tablet`, `hero1-mobile`. This matches the category and variant number in the [reference repo](https://github.com/NextCommerceCo/campaign-cart-landing-page-sections) and determines the export filename (e.g. `hero1` → `hero-1.html`)
+- Section frames follow the naming pattern `{category}{number}-{breakpoint}` — e.g. `hero1-desktop`, `hero1-tablet`, `hero1-mobile`. This matches the category and variant number in the external reference, [campaign-cart-starter-templates `src/landing`](https://github.com/NextCommerceCo/campaign-cart-starter-templates/tree/main/src/landing), and determines the export filename (e.g. `hero1` → `hero-1.html`)
 
 ---
 
@@ -85,4 +85,3 @@ Every image layer must be named with one of three prefixes. Pick the right one �
 
 - All fonts are **web-safe or Google Fonts** (Plus Jakarta Sans, Inter, etc.)
 - If the design uses a display or script font that won't load in a browser (e.g. a custom brand script), **flag it to the developer before handoff** — the text will be exported as an image rather than live text
-

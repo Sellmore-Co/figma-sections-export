@@ -2,12 +2,14 @@
 # save-ref.sh — Download Figma node screenshots as reference images
 #
 # Usage:
-#   ./scripts/save-ref.sh <campaign-slug> <section-name> <desktop-node-id> <tablet-node-id> <mobile-node-id>
+#   ./scripts/save-ref.sh <campaign-slug> <section-name> <desktop-node-id-or-url> <tablet-node-id-or-url> <mobile-node-id-or-url>
 #
 # Example:
 #   ./scripts/save-ref.sh section-preview hero-2 143:10703 143:10748 143:13028
+#   ./scripts/save-ref.sh section-preview hero-2 "https://www.figma.com/design/FILE/Name?node-id=143-10703"
 #
-# Requires FIGMA_ACCESS_TOKEN and FIGMA_FILE_KEY in .env (copy .env.example → .env)
+# Requires FIGMA_ACCESS_TOKEN in .env.
+# FIGMA_FILE_KEY is optional when any node input is a full Figma URL.
 
 set -e
 
@@ -28,8 +30,26 @@ TABLET_ID="$4"
 MOBILE_ID="$5"
 FILE_KEY="$FIGMA_FILE_KEY"
 
+extract_file_key() {
+  echo "$1" | sed -n 's#.*figma.com/design/\([^/?#]*\).*#\1#p'
+}
+
+extract_node_id() {
+  echo "$1" \
+    | sed -n 's/.*node-id=\([^&#]*\).*/\1/p' \
+    | sed 's/%3A/:/Ig; s/-/:/g'
+}
+
+for candidate in "$DESKTOP_ID" "$TABLET_ID" "$MOBILE_ID"; do
+  URL_FILE_KEY="$(extract_file_key "$candidate")"
+  if [ -n "$URL_FILE_KEY" ]; then
+    FILE_KEY="$URL_FILE_KEY"
+    break
+  fi
+done
+
 if [ -z "$FILE_KEY" ]; then
-  echo "Error: FIGMA_FILE_KEY not set. Add it to your .env file:"
+  echo "Error: no Figma file key found. Pass full Figma URLs or add FIGMA_FILE_KEY to your .env file:"
   echo "  FIGMA_FILE_KEY=your-figma-file-key"
   echo ""
   echo "Find the file key in the Figma URL:"
@@ -46,8 +66,11 @@ REF_DIR="src/$CAMPAIGN/_ref"
 mkdir -p "$REF_DIR"
 
 download_node() {
-  local node_id="$1"
+  local node_input="$1"
   local label="$2"
+  local parsed_node_id
+  parsed_node_id="$(extract_node_id "$node_input")"
+  local node_id="${parsed_node_id:-$node_input}"
   local out="$REF_DIR/$SECTION-$label.png"
 
   # Encode node id (: → %3A for URL)

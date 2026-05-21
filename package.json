@@ -10,13 +10,17 @@
     "build": "campaign-build",
     "clone": "campaign-clone",
     "config": "campaign-config",
-    "compress": "campaign-compress",
-    "compress:preview": "campaign-compress --preview",
+    "compress": "node scripts/compress-campaign-assets.js",
+    "compress:preview": "node scripts/compress-campaign-assets.js --preview",
     "migrate": "campaign-migrate",
     "new": "bash scripts/new-section.sh",
-    "compare": "node scripts/compare-ref.js"
+    "compare": "node scripts/compare-ref.js",
+    "validate": "node scripts/validate-export.js",
+    "handoff": "node scripts/handoff.js",
+    "infer": "node scripts/infer-section-name.js",
+    "intake": "node scripts/export-intake.js"
   },
   "dependencies": {
-    "next-campaign-page-kit": "^0.0.9"
+    "next-campaign-page-kit": "^0.1.3"
   }
 }

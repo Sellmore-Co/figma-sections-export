@@ -6,14 +6,15 @@
 # view, not the underlying source file.
 #
 # Usage:
-#   ./scripts/export-node.sh <node-id> <output-path> [scale] [export-type]
+#   ./scripts/export-node.sh <node-id-or-figma-url> <output-path> [scale] [export-type] [file-key]
 #
 # Examples:
 #   ./scripts/export-node.sh 143:10744 src/section-preview/assets/images/hero-2-photo.png 2
 #   ./scripts/export-node.sh 143:10744 src/section-preview/assets/images/hero-2-photo.png
 #   ./scripts/export-node.sh 143:14240 src/bottomcta-3/assets/images/bottomcta-3-hero.png 2 img-group
 #
-# Requires FIGMA_ACCESS_TOKEN and FIGMA_FILE_KEY in .env
+# Requires FIGMA_ACCESS_TOKEN in .env.
+# FIGMA_FILE_KEY is optional when you pass a full Figma URL or the fifth file-key argument.
 
 set -e
 
@@ -26,11 +27,34 @@ if [ -z "$FIGMA_ACCESS_TOKEN" ]; then
   exit 1
 fi
 
-NODE_ID="$1"
+NODE_INPUT="$1"
 OUTPUT="$2"
 SCALE="${3:-2}"
 EXPORT_TYPE="${4:-generic}"
-FILE_KEY="$FIGMA_FILE_KEY"
+FILE_KEY="${5:-$FIGMA_FILE_KEY}"
+
+extract_file_key() {
+  echo "$1" | sed -n 's#.*figma.com/design/\([^/?#]*\).*#\1#p'
+}
+
+extract_node_id() {
+  echo "$1" \
+    | sed -n 's/.*node-id=\([^&#]*\).*/\1/p' \
+    | sed 's/%3A/:/Ig; s/-/:/g'
+}
+
+URL_FILE_KEY="$(extract_file_key "$NODE_INPUT")"
+URL_NODE_ID="$(extract_node_id "$NODE_INPUT")"
+
+if [ -n "$URL_FILE_KEY" ]; then
+  FILE_KEY="$URL_FILE_KEY"
+fi
+
+if [ -n "$URL_NODE_ID" ]; then
+  NODE_ID="$URL_NODE_ID"
+else
+  NODE_ID="$NODE_INPUT"
+fi
 
 if [ -z "$FILE_KEY" ]; then
   echo "Error: FIGMA_FILE_KEY not set. Add it to your .env file:"
@@ -42,8 +66,9 @@ if [ -z "$FILE_KEY" ]; then
 fi
 
 if [ -z "$NODE_ID" ] || [ -z "$OUTPUT" ]; then
-  echo "Usage: $0 <node-id> <output-path> [scale] [export-type]"
+  echo "Usage: $0 <node-id-or-figma-url> <output-path> [scale] [export-type] [file-key]"
   echo "Example: $0 143:10744 src/section-preview/assets/images/hero-2-photo.png 2"
+  echo "Example: $0 'https://www.figma.com/design/FILE/Name?node-id=143-10744' src/section-preview/assets/images/hero-2-photo.png 2"
   echo "Example: $0 143:14240 src/bottomcta-3/assets/images/bottomcta-3-hero.png 2 img-group"
   exit 1
 fi
