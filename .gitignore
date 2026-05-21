@@ -17,7 +17,11 @@ scss/
 .netlify
 
 # Claude Code local settings
+.claude/
 .claude/settings.local.json
+
+# Codex local MCP/session settings
+.codex/
 
 # Local secrets
 .env

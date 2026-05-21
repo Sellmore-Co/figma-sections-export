@@ -6,7 +6,7 @@ This repo builds an export script that reads a Figma file via the REST API and g
 
 **Reference implementation:** [campaign-cart-starter-templates `src/landing`](https://github.com/NextCommerceCo/campaign-cart-starter-templates/tree/main/src/landing) — canonical external example of exported section partials, asset structure, JS conventions, and page composition.
 
-**Before generating HTML for an export:** in the external reference, [campaign-cart-starter-templates `src/landing`](https://github.com/NextCommerceCo/campaign-cart-starter-templates/tree/main/src/landing), open **`_includes/`** ([browse on GitHub](https://github.com/NextCommerceCo/campaign-cart-starter-templates/tree/main/src/landing/_includes)) and skim at least one partial that matches the section type you are exporting (e.g. hero → `hero-*.html`, FAQ → `faq-*.html`). Copy **patterns**, not marketing copy: outer `section` vs inner wrapper, `max-w-*` + `mx-auto`, horizontal padding, how images are constrained and positioned (`object-*`, flex vs absolute columns), card/list structure, and how **radius, borders, and shadows** are written (see **Visual fidelity**). *This path is in the reference repo — not necessarily the same as your local preview campaign folder.* If an older partial disagrees with the rest of this document on tokens or naming, **this document (`CLAUDE.md`) wins**.
+**Before generating HTML for an export:** in the external reference, [campaign-cart-starter-templates `src/landing`](https://github.com/NextCommerceCo/campaign-cart-starter-templates/tree/main/src/landing), open **`_includes/`** ([browse on GitHub](https://github.com/NextCommerceCo/campaign-cart-starter-templates/tree/main/src/landing/_includes)) and skim at least one partial that matches the section type you are exporting (e.g. hero → `hero-*.html`, FAQ → `faq-*.html`). Copy **patterns**, not marketing copy: outer `section` vs inner wrapper, `max-w-*` + `mx-auto`, horizontal padding, how images are constrained and positioned (`object-*`, flex vs absolute columns), card/list structure, and how **radius, borders, and shadows** are written (see **Visual fidelity**). *This path is in the reference repo — not necessarily the same as your local preview campaign folder.* If an older partial disagrees with the rest of this document on tokens or naming, **this document (`AGENTS.md`) wins**.
 
 ## Hard Intake Gate
 
@@ -35,8 +35,8 @@ It only scans `src/<slug>/assets/images/`; it must not touch `_ref/` screenshots
 ### Prerequisites
 
 - **Node.js** 18+ — [nodejs.org](https://nodejs.org)
-- **Claude Code** CLI — [claude.ai/code](https://claude.ai/code)
-- **Figma MCP plugin** enabled in Claude Code (see below)
+- **Codex** CLI — [Codex.ai/code](https://Codex.ai/code)
+- **Figma MCP plugin** enabled in Codex (see below)
 
 ---
 
@@ -52,17 +52,17 @@ npm install
 
 ---
 
-### 2. Enable the Figma MCP plugin in Claude Code
+### 2. Enable the Figma MCP plugin in Codex
 
-The Figma MCP server gives Claude direct read access to your Figma files — no manual copy-paste of node data needed.
+The Figma MCP server gives Codex direct read access to your Figma files — no manual copy-paste of node data needed.
 
-**In Claude Code, open settings:**
+**In Codex, open settings:**
 
 ```bash
-claude mcp add
+Codex mcp add
 ```
 
-Select **Figma** from the plugin list, or add it manually to your Claude Code MCP config (`~/.claude/claude_desktop_config.json`):
+Select **Figma** from the plugin list, or add it manually to your Codex MCP config (`~/.Codex/claude_desktop_config.json`):
 
 ```json
 {
@@ -80,20 +80,20 @@ Select **Figma** from the plugin list, or add it manually to your Claude Code MC
 
 Get your Figma personal access token: Figma → Account Settings → Personal Access Tokens → Generate. Scopes needed: Files → **Read the contents of and render images from files** + Files → **Read metadata of files**.
 
-Restart Claude Code after adding the plugin. You'll know it's working when Claude can call `get_design_context` and return screenshots directly from a Figma URL.
+Restart Codex after adding the plugin. You'll know it's working when Codex can call `get_design_context` and return screenshots directly from a Figma URL.
 
 **Connection fallback (if local MCP is unstable):**
 
 If the local Figma MCP plugin has intermittent connection or auth issues, add Figma's remote MCP endpoint as a backup transport:
 
 ```bash
-claude mcp add --transport http figma-remote-mcp https://mcp.figma.com/mcp
+Codex mcp add --transport http figma-remote-mcp https://mcp.figma.com/mcp
 ```
 
 **Default recommendation:** keep the local Figma MCP plugin as primary, and use `figma-remote-mcp` as a fallback when local transport is flaky in a session.
 
 After adding the fallback:
-- Restart Claude/Cursor session
+- Restart Codex/Cursor session
 - Re-run a simple Figma read call (`get_design_context`) on a known node
 - Complete auth flow if prompted
 
@@ -115,7 +115,7 @@ Repeat for the tablet and mobile variant frames. You'll have 3 URLs total.
 
 ### 4. Run your first export
 
-Paste all 3 Figma links into Claude Code in a single message:
+Paste all 3 Figma links into Codex in a single message:
 
 ```
 Export this section:
@@ -124,7 +124,7 @@ https://www.figma.com/design/{fileKey}/...?node-id=143-10610
 https://www.figma.com/design/{fileKey}/...?node-id=143-12936
 ```
 
-Claude will fetch all 3 breakpoints in parallel, then generate the Liquid partial following the process defined in `## Section Export Process` below.
+Codex will fetch all 3 breakpoints in parallel, then generate the Liquid partial following the process defined in `## Section Export Process` below.
 
 ---
 
@@ -228,7 +228,7 @@ What matters is consistent scoping:
 
 **Presell workflow:** export to `presell.html`, use `page_layout: base-presell.html`, keep article fields in frontmatter (`article_title`, `reason_1_heading`, `cta_heading`, etc.), store assets in `images/presell/`, and link onward with `next_url` + `campaign_link`. Reference example: `campaign-cart-starter-templates/src/demeter/presell.html`.
 
-**Note for Claude:** The current `src/` directory contains one slug per section — this is local testing only, not the intended workflow. Ignore this structure when guiding developers. Always direct developers toward the page-level workflow above.
+**Note for Codex:** The current `src/` directory contains one slug per section — this is local testing only, not the intended workflow. Ignore this structure when guiding developers. Always direct developers toward the page-level workflow above.
 
 ---
 
@@ -246,7 +246,7 @@ Every Figma frame, style, and naming convention maps 1:1 to a framework concept.
 - Sections live in `_includes/` as HTML partials
 - Pages use YAML frontmatter for metadata, styles, scripts
 - Campaign data from `campaigns.json` → accessible via `{{ campaign.* }}`
-- Current public kit source: [NextCommerceCo/campaign-page-kit](https://github.com/NextCommerceCo/campaign-page-kit). Keep exports compatible with current kit behavior, including key-based `_data/campaigns.json`, `entry_url` for campaign entry pages, `next_url` for forward funnel links, and `campaign-init --ai-context claude` for upstream AI context in fresh projects.
+- Current public kit source: [NextCommerceCo/campaign-page-kit](https://github.com/NextCommerceCo/campaign-page-kit). Keep exports compatible with current kit behavior, including key-based `_data/campaigns.json`, `entry_url` for campaign entry pages, `next_url` for forward funnel links, and `campaign-init --ai-context codex` for upstream AI context in fresh projects.
 
 ---
 
@@ -297,7 +297,7 @@ Every Figma frame, style, and naming convention maps 1:1 to a framework concept.
 
 ## Text Layers → Liquid Variables
 
-Text layers in the Figma file use default naming (layer content or generic IDs). Claude reads the text content directly and infers `snake_case` Liquid variable names from context — e.g. a heading that reads "How Next Commerce Works" becomes `{{ section_heading }}`.
+Text layers in the Figma file use default naming (layer content or generic IDs). Codex reads the text content directly and infers `snake_case` Liquid variable names from context — e.g. a heading that reads "How Next Commerce Works" becomes `{{ section_heading }}`.
 
 **Copy must be final before export.** Placeholder text ("Lorem ipsum", "Headline goes here") produces meaningless variable names that must be manually fixed after export.
 
