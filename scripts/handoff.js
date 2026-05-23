@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { writeManifest } = require('./write-handoff-manifest');
 
 const root = path.resolve(__dirname, '..');
 const args = process.argv.slice(2);
@@ -58,8 +59,28 @@ if (noCompress) {
   console.log('[handoff] Image compression skipped: no JPG, PNG, or WebP files found.');
 }
 
+console.log('\n[handoff] Writing campaigns-os handoff manifest');
+try {
+  const { manifest, outPath } = writeManifest({
+    campaignDir,
+    slug,
+    generatorRoot: root,
+  });
+  const relPath = path.relative(root, outPath);
+  if (manifest.pages.length === 0) {
+    console.warn(`[handoff] ${relPath} written with empty pages[] — no landing.html or presell.html detected; campaigns-os will treat this as collect-inputs.`);
+  } else {
+    const summary = manifest.pages.map((p) => `${p.page_id} (${p.path})`).join(', ');
+    console.log(`[handoff] ${relPath} — ${summary}`);
+  }
+} catch (error) {
+  console.error(`[handoff] Manifest write failed: ${error.message}`);
+  process.exit(1);
+}
+
 console.log('\n[handoff] Ready for developer handoff checks.');
 console.log(`[handoff] Folder: src/${slug}/`);
+console.log(`[handoff] Manifest: src/${slug}/.campaigns-os/source-html-manifest.json`);
 if (compareSection) {
   console.log(`[handoff] Compare page: src/${slug}/_ref/compare.html`);
 }

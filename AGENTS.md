@@ -146,7 +146,8 @@ Select your campaign from the list → opens the configured `entry_url`, usually
 | `npm run build` | Production build |
 | `npm run compare <slug> [ref-prefix] [port]` | Open side-by-side Figma vs live compare page |
 | `npm run validate -- <slug>` | Validate local export output against the public starter-template patterns |
-| `npm run handoff -- <slug> [ref-prefix]` | Run final developer handoff checks: validate, compare when refs are available, and compress final images |
+| `npm run handoff -- <slug> [ref-prefix]` | Run final developer handoff checks: validate, compare when refs are available, compress final images, and write the campaigns-os source-html manifest |
+| `npm run manifest -- <slug>` | Write the campaigns-os source-html manifest standalone (see [docs/source-html-manifest.md](docs/source-html-manifest.md)) |
 | `npm run new <slug> <section>` | Scaffold a landing section preview |
 | `npm run new <slug> presell "Display Name" presell-page` | Scaffold a standalone presell page |
 | `npm run compress <slug>` | Optimise all images in `src/<slug>/assets/images/` — run after downloading Figma assets and before final handoff |

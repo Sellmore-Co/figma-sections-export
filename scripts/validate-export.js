@@ -4,6 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Liquid } = require('liquidjs');
+const { SCHEMA_VERSION: MANIFEST_SCHEMA_VERSION, PAGE_DETECTORS } = require('./write-handoff-manifest');
 
 const root = path.resolve(__dirname, '..');
 const srcRoot = path.join(root, 'src');
@@ -68,7 +69,8 @@ Checks exported local campaigns for:
   - per-section JS files instead of shared landing.js
   - landing handoff files under landing.html and _includes/landing/
   - Swiper/accordion/expandable/video markup that bypasses shared data-* contracts
-  - missing reference wrappers for landing and presell pages`);
+  - missing reference wrappers for landing and presell pages
+  - source-html manifest (.campaigns-os/source-html-manifest.json) consistency when present`);
 }
 
 function resolveTargets(rawTargets) {
@@ -125,6 +127,64 @@ function validateCampaign(campaignDir) {
   }
 
   validateJsFiles(jsFiles, campaignDir);
+  validateHandoffManifest(campaignDir);
+}
+
+function validateHandoffManifest(campaignDir) {
+  const manifestPath = path.join(campaignDir, '.campaigns-os', 'source-html-manifest.json');
+  if (!fs.existsSync(manifestPath)) {
+    // Manifest is only required at handoff time; absent during normal section iteration.
+    return;
+  }
+
+  const relManifest = relative(manifestPath);
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  } catch (error) {
+    errors.push(`${relManifest}: invalid JSON (${error.message})`);
+    return;
+  }
+
+  if (manifest.schema_version !== MANIFEST_SCHEMA_VERSION) {
+    errors.push(`${relManifest}: schema_version "${manifest.schema_version}" is not "${MANIFEST_SCHEMA_VERSION}"`);
+  }
+
+  if (!Array.isArray(manifest.pages)) {
+    errors.push(`${relManifest}: pages must be an array`);
+    return;
+  }
+
+  const seenPageIds = new Set();
+  for (const entry of manifest.pages) {
+    if (!entry || typeof entry !== 'object') {
+      errors.push(`${relManifest}: pages[] contains a non-object entry`);
+      continue;
+    }
+    const { page_id, path: relPath, page_type } = entry;
+    if (!page_id || !relPath || !page_type) {
+      errors.push(`${relManifest}: pages[] entry missing required fields (page_id, path, page_type)`);
+      continue;
+    }
+    if (seenPageIds.has(page_id)) {
+      errors.push(`${relManifest}: duplicate page_id "${page_id}"`);
+    }
+    seenPageIds.add(page_id);
+
+    const targetPath = path.join(campaignDir, relPath);
+    if (!fs.existsSync(targetPath)) {
+      errors.push(`${relManifest}: page "${page_id}" claims path "${relPath}" but file does not exist`);
+    }
+  }
+
+  // Inverse check: any landing.html / presell.html on disk should be in the manifest.
+  for (const detector of PAGE_DETECTORS) {
+    const onDisk = fs.existsSync(path.join(campaignDir, detector.filename));
+    const inManifest = manifest.pages.some((p) => p && p.path === detector.filename);
+    if (onDisk && !inManifest) {
+      warnings.push(`${relManifest}: ${detector.filename} exists on disk but is missing from manifest pages[]`);
+    }
+  }
 }
 
 function validateEntryUrl(campaignDir) {
@@ -400,7 +460,7 @@ function decodeHtmlEntities(value) {
 
 function walk(dir, files = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === 'node_modules' || entry.name === '_site' || entry.name === '.git') continue;
+    if (entry.name === 'node_modules' || entry.name === '_site' || entry.name === '.git' || entry.name === '.campaigns-os') continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full, files);
     if (entry.isFile()) files.push(full);
