@@ -18,7 +18,8 @@
     "validate": "node scripts/validate-export.js",
     "handoff": "node scripts/handoff.js",
     "infer": "node scripts/infer-section-name.js",
-    "intake": "node scripts/export-intake.js"
+    "intake": "node scripts/export-intake.js",
+    "manifest": "node scripts/write-handoff-manifest.js"
   },
   "dependencies": {
     "next-campaign-page-kit": "^0.1.3"
