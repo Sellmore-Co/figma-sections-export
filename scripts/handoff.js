@@ -14,11 +14,13 @@ if (args.includes('--help') || args.includes('-h')) {
   process.exit(0);
 }
 
-const flags = new Set(args.filter((arg) => arg.startsWith('--')));
-const positional = args.filter((arg) => !arg.startsWith('--'));
+const parsed = parseArgs(args);
+const flags = parsed.flags;
+const positional = parsed.positional;
 const [slug, maybeSection, maybePort] = positional;
 const port = maybePort && /^\d+$/.test(maybePort) ? maybePort : '3000';
 const noCompress = flags.has('--no-compress');
+const pageIdOverrides = parsed.pageIdOverrides;
 
 if (!slug) {
   printHelp();
@@ -65,8 +67,9 @@ try {
     campaignDir,
     slug,
     generatorRoot: root,
+    pageIdOverrides,
   });
-  const relPath = path.relative(root, outPath);
+  const relPath = toPosix(path.relative(root, outPath));
   if (manifest.pages.length === 0) {
     console.warn(`[handoff] ${relPath} written with empty pages[] — no landing.html or presell.html detected; campaigns-os will treat this as collect-inputs.`);
   } else {
@@ -144,19 +147,75 @@ function hasCompressibleImages(dir) {
   return false;
 }
 
+function parseArgs(rawArgs) {
+  const out = {
+    flags: new Set(),
+    positional: [],
+    pageIdOverrides: new Map(),
+  };
+
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index];
+    if (arg === '--page-id') {
+      const value = rawArgs[index + 1];
+      if (!value || value.startsWith('--')) {
+        console.error('[handoff] --page-id requires a value, e.g. --page-id landing=page_most7ygt_415');
+        process.exit(1);
+      }
+      addPageIdOverride(out.pageIdOverrides, value);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--page-id=')) {
+      addPageIdOverride(out.pageIdOverrides, arg.slice('--page-id='.length));
+      continue;
+    }
+
+    if (arg.startsWith('--')) {
+      out.flags.add(arg);
+      continue;
+    }
+
+    out.positional.push(arg);
+  }
+
+  return out;
+}
+
+function addPageIdOverride(overrides, value) {
+  const match = value.match(/^([^=:]+)[=:](.+)$/);
+  if (!match || !match[1].trim() || !match[2].trim()) {
+    console.error(`[handoff] Invalid --page-id value "${value}". Use <page>=<CampaignSpec page id>, e.g. landing=page_most7ygt_415.`);
+    process.exit(1);
+  }
+  overrides.set(match[1].trim(), match[2].trim());
+}
+
+function toPosix(value) {
+  return value.split(path.sep).join('/');
+}
+
 function printHelp() {
   console.log(`Usage:
   npm run handoff -- <slug> [section] [port]
   npm run handoff -- <slug> [section] --no-compress
+  npm run handoff -- <slug> --page-id landing=page_most7ygt_415
+  npm run handoff -- <slug> --page-id presell=page_most7ygt_414
 
 Runs final developer handoff checks:
   - validates the export
   - generates the compare page when one ref set exists, or when [section] is provided
   - compresses final JPG, PNG, and WebP assets unless --no-compress is passed
+  - writes .campaigns-os/source-html-manifest.json for Campaigns OS source intake
+
+Page IDs default to filename-derived values such as "landing" and "presell".
+Use --page-id <page>=<id> when the CampaignSpec has generated page ids.
 
 Examples:
   npm run handoff -- novaburn
   npm run handoff -- novaburn hero-1
   npm run handoff -- novaburn hero-1 3001
-  npm run handoff -- novaburn --no-compress`);
+  npm run handoff -- novaburn --no-compress
+  npm run handoff -- novaburn --page-id landing=page_most7ygt_415`);
 }

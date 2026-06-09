@@ -17,13 +17,14 @@
 //   "campaign_slug": "<slug>",
 //   "root": ".",                 // self-reference; relative to the manifest's own location
 //   "pages": [
-//     { "page_id": "landing", "path": "landing.html", "page_type": "landing" },
-//     { "page_id": "presell", "path": "presell.html", "page_type": "presell" }
+//     { "page_id": "landing", "path": "landing.html", "page_type": "landing", "page_url": "", "source_hash": "..." },
+//     { "page_id": "presell", "path": "presell.html", "page_type": "presell", "page_url": "presell", "source_hash": "..." }
 //   ]
 // }
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const SCHEMA_VERSION = 'source-html-manifest/v0';
 
@@ -32,19 +33,44 @@ const PAGE_DETECTORS = [
   { page_id: 'presell', filename: 'presell.html', page_type: 'presell' },
 ];
 
-function detectPages(campaignDir) {
+function detectPages(campaignDir, pageIdOverrides = new Map()) {
   const pages = [];
-  for (const candidate of PAGE_DETECTORS) {
+  PAGE_DETECTORS.forEach((candidate, index) => {
     const full = path.join(campaignDir, candidate.filename);
     if (fs.existsSync(full)) {
       pages.push({
-        page_id: candidate.page_id,
+        page_id: resolvePageId(candidate, index, pageIdOverrides),
         path: candidate.filename,
         page_type: candidate.page_type,
+        page_url: pageUrlFor(candidate.filename),
+        source_hash: sha256File(full),
       });
     }
-  }
+  });
   return pages;
+}
+
+function resolvePageId(candidate, index, pageIdOverrides) {
+  const keys = [
+    candidate.filename,
+    path.basename(candidate.filename, '.html'),
+    candidate.page_type,
+    String(index + 1),
+  ];
+
+  for (const key of keys) {
+    if (pageIdOverrides.has(key)) return pageIdOverrides.get(key);
+  }
+
+  return candidate.page_id;
+}
+
+function pageUrlFor(filename) {
+  return filename === 'landing.html' ? '' : filename.replace(/\.html$/i, '');
+}
+
+function sha256File(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
 function readPackageVersion(root) {
@@ -56,8 +82,8 @@ function readPackageVersion(root) {
   }
 }
 
-function buildManifest({ campaignDir, slug, generatorRoot }) {
-  const pages = detectPages(campaignDir);
+function buildManifest({ campaignDir, slug, generatorRoot, pageIdOverrides }) {
+  const pages = detectPages(campaignDir, pageIdOverrides);
 
   return {
     schema_version: SCHEMA_VERSION,
@@ -69,8 +95,8 @@ function buildManifest({ campaignDir, slug, generatorRoot }) {
   };
 }
 
-function writeManifest({ campaignDir, slug, generatorRoot }) {
-  const manifest = buildManifest({ campaignDir, slug, generatorRoot });
+function writeManifest({ campaignDir, slug, generatorRoot, pageIdOverrides }) {
+  const manifest = buildManifest({ campaignDir, slug, generatorRoot, pageIdOverrides });
   const outDir = path.join(campaignDir, '.campaigns-os');
   const outPath = path.join(outDir, 'source-html-manifest.json');
 

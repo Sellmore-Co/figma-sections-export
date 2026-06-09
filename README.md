@@ -137,7 +137,7 @@ npm run dev
 | `scripts/export-node.sh` | Export a Figma node as canvas-rendered PNG (respects crop/frame) |
 | `npm run compare <slug> [ref-prefix] [port]` | Generate a Figma vs live comparison page at all 3 breakpoints; optional `ref-prefix` selects which `*-desktop.png` set in `_ref/` (see QUICKSTART) |
 | `npm run validate -- <slug>` | Validate local export output against the public starter-template patterns |
-| `npm run handoff -- <slug> [ref-prefix]` | Run final developer handoff checks: validate, generate compare when refs are available, and compress final images |
+| `npm run handoff -- <slug> [ref-prefix]` | Run final developer handoff checks: validate, generate compare when refs are available, compress final images, and emit the Campaigns OS source manifest |
 | `npm run compress -- <slug>` | Compress final handoff assets under `src/<slug>/assets/images/` only; does not touch `_ref/` screenshots or other campaigns |
 | `npm run infer -- <figma-url>` | Read a Figma frame name and infer the export section name, e.g. `problemsolution2-desktop` → `problemsolution-2` |
 | `npm run intake -- "<message>"` | Preflight pasted Figma links and tell the agent whether it must ask for slug/type before fetching |
@@ -149,6 +149,8 @@ npm run dev
 New landing preview campaigns copy their behavior from [templates/landing/assets/js/landing.js](./templates/landing/assets/js/landing.js). Keep accordion, Swiper, expandable show/hide, modal video, inline video, and future shared landing interactions there instead of inventing per-section scripts. The included `data-countdown` support is a landing-only fallback; promo/checkout timers should use the campaign-cart/web-component timer pattern from the checkout templates.
 
 Compression is final-handoff only. `npm run compress -- <slug>` intentionally scans only `src/<slug>/assets/images/`; it does not compress `_ref/` comparison screenshots and it does not touch other campaign folders.
+
+Final handoff also writes `src/<slug>/.campaigns-os/source-html-manifest.json` for Campaigns OS source intake. Page IDs default to filename-derived values such as `landing` and `presell`; when a CampaignSpec uses generated page IDs, pass overrides like `npm run handoff -- <slug> --page-id landing=page_most7ygt_415`.
 
 Current Figma naming conventions cover assets and tokens. Behaviour is inferred from the section family, visible controls, and the matching reference partial.
 
