@@ -19,7 +19,10 @@
     "handoff": "node scripts/handoff.js",
     "infer": "node scripts/infer-section-name.js",
     "intake": "node scripts/export-intake.js",
-    "manifest": "node scripts/write-handoff-manifest.js"
+    "manifest": "node scripts/write-handoff-manifest.js",
+    "extract": "node scripts/export-section.js",
+    "annotations": "node scripts/figma-annotations.js",
+    "test": "node scripts/test/run.js"
   },
   "dependencies": {
     "next-campaign-page-kit": "^0.1.3"

@@ -1,0 +1,175 @@
+// interactive-html.js — build the two interactive partial shapes this toolkit
+// now emits instead of a flat image wrapped in a whole-section link:
+//
+//   1. renderHotspotSection — a responsive <picture> with a transparent <a>
+//      positioned over ONLY the CTA button, one per breakpoint, shown via the
+//      same breakpoints the <picture> sources use (md = 768px, lg = 1024px).
+//   2. renderAccordionSection — a native <details>/<summary> accordion built
+//      from Q&A content (no JavaScript required).
+//
+// Pure string builders so they can be unit-tested without a network or Figma
+// token. The CLI orchestrator (export-section.js) wires real data in.
+
+// Figma breakpoint -> the min-width that the matching <picture> source uses.
+const BREAKPOINT_MIN = { mobile: 0, tablet: 768, desktop: 1024 };
+const BREAKPOINT_ORDER = ['mobile', 'tablet', 'desktop'];
+
+// hero-1 -> hero_1 (Liquid variable namespace).
+function varPrefix(sectionId) {
+  return String(sectionId).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toLowerCase();
+}
+
+function indent(block, spaces) {
+  const pad = ' '.repeat(spaces);
+  return block
+    .split('\n')
+    .map((line) => (line.length ? pad + line : line))
+    .join('\n');
+}
+
+function escapeAttr(value) {
+  return String(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+// Tailwind responsive visibility for a hotspot that should be visible only on
+// the range [min, max). md: = 768px, lg: = 1024px — these match the <picture>
+// source media queries exactly.
+function visibilityClasses(min, max) {
+  if (min === 0 && max === Infinity) return [];
+  if (min === 0 && max === 768) return ['md:hidden'];
+  if (min === 0 && max === 1024) return ['lg:hidden'];
+  if (min === 768 && max === 1024) return ['hidden', 'md:block', 'lg:hidden'];
+  if (min === 768 && max === Infinity) return ['hidden', 'md:block'];
+  if (min === 1024) return ['hidden', 'lg:block'];
+  return [];
+}
+
+// Build a responsive <picture>. `breakpoints` is an ordered list of
+// { name, assetExpr } where assetExpr is a ready-to-use Liquid expression,
+// e.g. "'images/hero-1/hero-1-desktop.png' | campaign_asset".
+function renderPicture(breakpoints, altExpr) {
+  const present = BREAKPOINT_ORDER.filter((bp) => breakpoints.some((b) => b.name === bp));
+  const exprFor = (name) => breakpoints.find((b) => b.name === name).assetExpr;
+
+  // The <img> fallback is the lowest present breakpoint; higher breakpoints
+  // become <source> elements (browser picks the first matching media query).
+  const imgBp = present[0];
+  const sources = present
+    .slice(1)
+    .reverse() // desktop source must come before tablet source
+    .map((bp) => `  <source media="(min-width: ${BREAKPOINT_MIN[bp]}px)" srcset="{{ ${exprFor(bp)} }}">`);
+
+  return [
+    '<picture class="block w-full">',
+    ...sources,
+    `  <img src="{{ ${exprFor(imgBp)} }}" alt="{{ ${altExpr} }}" class="block w-full h-auto" loading="lazy" decoding="async">`,
+    '</picture>',
+  ].join('\n');
+}
+
+// Build a transparent CTA <a> overlay for one breakpoint.
+function renderHotspotAnchor(name, hotspot, presentBreakpoints, hrefExpr, labelExpr) {
+  const min = BREAKPOINT_MIN[name];
+  const higher = presentBreakpoints
+    .map((b) => BREAKPOINT_MIN[b])
+    .filter((m) => m > min)
+    .sort((a, b) => a - b);
+  const max = higher.length ? higher[0] : Infinity;
+
+  const classes = ['absolute', 'block', 'z-[2]', ...visibilityClasses(min, max)];
+  const style = `left:${hotspot.left}%;top:${hotspot.top}%;width:${hotspot.width}%;height:${hotspot.height}%`;
+
+  return `<a href="{{ ${hrefExpr} }}" class="${classes.join(' ')}" style="${style}" aria-label="{{ ${labelExpr} }}"></a>`;
+}
+
+// Build a full interactive image-slice section: <picture> + per-breakpoint
+// CTA hotspots. `breakpoints` carries { name, assetExpr, hotspot }.
+function renderHotspotSection({ sectionId, breakpoints, altExpr, hrefExpr, labelExpr }) {
+  const prefix = varPrefix(sectionId);
+  const present = BREAKPOINT_ORDER.filter((bp) => breakpoints.some((b) => b.name === bp));
+
+  altExpr = altExpr || `${prefix}_alt`;
+  hrefExpr = hrefExpr || `${prefix}_cta_url | campaign_link`;
+  labelExpr = labelExpr || `${prefix}_cta_label`;
+
+  const picture = renderPicture(breakpoints, altExpr);
+
+  const anchors = present
+    .filter((bp) => breakpoints.find((b) => b.name === bp).hotspot)
+    .map((bp) => {
+      const entry = breakpoints.find((b) => b.name === bp);
+      return renderHotspotAnchor(bp, entry.hotspot, present, hrefExpr, labelExpr);
+    });
+
+  const inner = [picture, '', '<!-- CTA hotspots — transparent links over the button only, one per breakpoint -->', ...anchors];
+  const hotspotNote = anchors.length
+    ? ''
+    : '\n  <!-- TODO: no CTA button node was found in Figma; add a hotspot <a> manually -->';
+
+  return [
+    `<!-- ${sectionId} — interactive image-slice section (generated by export-section.js) -->`,
+    `<section class="section-${sectionId} relative w-full overflow-hidden">`,
+    '  <div class="relative max-w-[1440px] mx-auto w-full" data-hotspot-root>',
+    indent(inner.join('\n'), 4) + hotspotNote,
+    '  </div>',
+    '</section>',
+    '',
+  ].join('\n');
+}
+
+// Build a native <details> accordion. `items` is [{ question, answer }];
+// markup references namespaced Liquid variables and the copy itself lives in
+// page frontmatter (returned in `frontmatter`).
+function renderAccordionSection({ sectionId, items, headingText }) {
+  const prefix = varPrefix(sectionId);
+  const frontmatter = {};
+  if (headingText) frontmatter[`${prefix}_heading`] = headingText;
+
+  const rows = items.map((item, i) => {
+    const n = i + 1;
+    const qVar = `${prefix}_q_${n}`;
+    const aVar = `${prefix}_a_${n}`;
+    frontmatter[qVar] = item.question;
+    frontmatter[aVar] = item.answer;
+
+    return [
+      '<details class="group py-[20px]">',
+      '  <summary class="flex items-center justify-between gap-4 cursor-pointer list-none font-semibold text-[18px] md:text-[20px] leading-[1.4] text-[var(--text-primary)]">',
+      `    <span>{{ ${qVar} }}</span>`,
+      '    <span aria-hidden="true" class="shrink-0 text-[28px] leading-none transition-transform duration-200 group-open:rotate-45">+</span>',
+      '  </summary>',
+      `  <div class="mt-[12px] text-[16px] md:text-[18px] leading-[1.6] text-[var(--text-secondary)]">{{ ${aVar} }}</div>`,
+      '</details>',
+    ].join('\n');
+  });
+
+  const heading = headingText
+    ? `    <h2 class="text-[28px] md:text-[32px] lg:text-[40px] leading-[1.2] font-bold text-[var(--text-primary)] text-center">{{ ${prefix}_heading }}</h2>\n`
+    : '';
+
+  const html = [
+    `<!-- ${sectionId} — native <details> accordion (generated by export-section.js) -->`,
+    `<section class="section-${sectionId} w-full py-[40px] md:py-[48px] lg:py-[60px]">`,
+    '  <div class="max-w-[800px] mx-auto w-full px-[15px] md:px-[26px] lg:px-[60px]">',
+    heading,
+    '    <div class="mt-[24px] border-t border-b border-[rgba(0,0,0,0.16)] divide-y divide-[rgba(0,0,0,0.16)]">',
+    indent(rows.join('\n'), 6),
+    '    </div>',
+    '  </div>',
+    '</section>',
+    '',
+  ].join('\n');
+
+  return { html, frontmatter };
+}
+
+module.exports = {
+  varPrefix,
+  visibilityClasses,
+  renderPicture,
+  renderHotspotAnchor,
+  renderHotspotSection,
+  renderAccordionSection,
+  BREAKPOINT_MIN,
+  BREAKPOINT_ORDER,
+};
