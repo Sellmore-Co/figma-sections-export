@@ -56,6 +56,8 @@ npm install
 
 The project uses the current public `next-campaign-page-kit` package from [NextCommerceCo/campaign-page-kit](https://github.com/NextCommerceCo/campaign-page-kit). For a fresh production campaign repo, `campaign-init --ai-context codex` can also generate the latest upstream `AGENTS.md`; this export repo keeps additional Figma-specific rules on top.
 
+> **`npm install` must finish before anything else works.** On a fresh clone, skipping it makes `npm run validate` / `compare` / `dev` fail with `Cannot find module 'liquidjs'` (and similar) — that error means dependencies were never installed, not that the export is broken. Run `npm install` and retry.
+
 ---
 
 ## 2. Add your Figma token
@@ -68,6 +70,8 @@ Open `.env` and paste your Figma personal access token.
 
 Get one at: **Figma → Account Settings → Personal Access Tokens → Generate new token**
 Scopes needed: Files → **Read the contents of and render images from files** + Files → **Read metadata of files**
+
+> **Don't health-check the token with `/v1/me`.** With only the two scopes above, `GET /v1/me` returns `403 Invalid scope(s)… requires current_user:read` even when the token is perfectly valid for exporting. That endpoint needs a scope the export scripts don't use. To verify the token, hit an endpoint the scripts actually use — e.g. `GET /v1/files/<file-key>` — which succeeds with the export scopes.
 
 ---
 
@@ -163,8 +167,18 @@ npm run compare <slug>
 npm run compare <slug> 3001
 npm run compare <slug> <ref-prefix>
 npm run compare <slug> <ref-prefix> 3001
-open src/<slug>/_ref/compare.html
+open src/<slug>/_ref/compare-<ref-prefix>.html
 ```
+
+The compare page is written per section as `compare-<ref-prefix>.html` (falling back to `compare.html` only when no section can be determined), so parallel exports don't overwrite each other.
+
+To view it in a browser, add `--serve`:
+
+```bash
+npm run compare <slug> <ref-prefix> --serve
+```
+
+This boots a small static server and opens the page over http. Opening the file directly (`file://`) leaves the Figma reference columns blank in some browsers, so prefer `--serve` for viewing. Use `--serve-port=N` if 4100 is taken.
 
 `<ref-prefix>` is the part before `-desktop.png` / `-tablet.png` / `-mobile.png` in `_ref/` (the same name you pass to `save-ref.sh` as `<section>`). If you omit it and more than one ref set exists, the tool picks alphabetically first and prints a warning — pass `<ref-prefix>` to choose explicitly. If the second argument is numeric only, it is treated as the dev server port (same as before).
 

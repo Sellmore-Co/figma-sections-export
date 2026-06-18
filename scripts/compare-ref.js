@@ -2,28 +2,48 @@
 // compare-ref.js — Generate a visual compare page (Figma ref vs live iframe)
 //
 // Usage:
-//   npm run compare <slug> [section] [port]
+//   npm run compare <slug> [section] [port] [--serve] [--serve-port=N]
 //   node scripts/compare-ref.js hero-1
 //   node scripts/compare-ref.js hero-1 3001
 //   node scripts/compare-ref.js my-campaign nav-2
 //   node scripts/compare-ref.js my-campaign nav-2 3001
+//   node scripts/compare-ref.js my-campaign nav-2 --serve
 //
 // If [section] is omitted, ref PNGs are chosen from *-desktop.png in _ref/
 // (alphabetically first prefix if multiple — a warning is printed).
 // If [section] is set, uses {section}-desktop.png / tablet / mobile explicitly.
 // If the 2nd argument is numeric only, it is treated as [port] (backward compatible).
 //
+// --serve         Boot a tiny static http server for _ref/ and print/open the
+//                 http URL. Use this for viewing: opening the page as file://
+//                 leaves the Figma columns blank because some browsers block
+//                 local file:// images on a page that also loads an http iframe.
+// --serve-port=N  Port for that static server (default 4100; auto-increments if busy).
+//
+// Without --serve the page is only generated (the command exits), which is what
+// the agent export flow expects — add --serve when a human wants to view it.
+//
 // Requires:
 //   - Figma ref images in src/{slug}/_ref/ (run save-ref.sh first)
 //   - Dev server running; live URL uses _data/campaigns.json entry_url when set
 //
 // Output:
-//   src/{slug}/_ref/compare.html  ← open this in a browser
+//   src/{slug}/_ref/compare-{section}.html  ← open this in a browser (over http)
+//   (falls back to compare.html only when no section can be determined)
 
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const { exec } = require('child_process');
 
-const [, , slug, arg2, arg3] = process.argv;
+const rawArgs = process.argv.slice(2);
+const flags = rawArgs.filter((a) => a.startsWith('--'));
+const positional = rawArgs.filter((a) => !a.startsWith('--'));
+const [slug, arg2, arg3] = positional;
+
+const serve = flags.includes('--serve');
+const servePortFlag = flags.find((f) => f.startsWith('--serve-port='));
+const servePort = servePortFlag ? parseInt(servePortFlag.split('=')[1], 10) || 4100 : 4100;
 
 if (!slug) {
   console.error('Usage: npm run compare <slug> [section] [port]');
@@ -106,16 +126,76 @@ const panels = breakpoints.map((bp) => ({
   figmaExists: sectionName ? fs.existsSync(path.join(refDir, `${sectionName}-${bp.name}.png`)) : false,
 }));
 
-const htmlPath = path.join(refDir, 'compare.html');
-fs.writeFileSync(htmlPath, generateHtml(slug, liveUrl, panels));
+// Per-section output so parallel exports don't clobber a single shared compare.html.
+// Falls back to compare.html only when no section could be determined.
+const htmlFile = sectionName ? `compare-${sectionName}.html` : 'compare.html';
+const htmlPath = path.join(refDir, htmlFile);
+fs.writeFileSync(htmlPath, generateHtml(slug, sectionName, liveUrl, panels));
 
-console.log(`\n✓ Compare page ready → src/${slug}/_ref/compare.html`);
-console.log(`  open src/${slug}/_ref/compare.html`);
+console.log(`\n✓ Compare page ready → src/${slug}/_ref/${htmlFile}`);
 console.log(`  live URL: ${liveUrl}`);
 if (sectionName) {
   console.log(`  Figma refs: ${sectionName}-*.png`);
 } else {
   console.log(`  No Figma refs found — run save-ref.sh to add them`);
+}
+
+if (serve) {
+  startServer(refDir, servePort, htmlFile);
+} else {
+  console.log(`  open src/${slug}/_ref/${htmlFile}`);
+  console.log(`  tip: add --serve to view over http (file:// leaves the Figma columns blank)`);
+}
+
+const CONTENT_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+};
+
+// Serve _ref/ over http so both columns (local Figma PNGs + live iframe) load
+// over http. Opening the page as file:// leaves the Figma side blank in some browsers.
+function startServer(rootDir, port, htmlFile, attempt = 0) {
+  const server = http.createServer((req, res) => {
+    const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+    const rel = urlPath === '/' ? htmlFile : urlPath.replace(/^\/+/, '');
+    const filePath = path.join(rootDir, rel);
+
+    // Confine to rootDir — never serve outside _ref/.
+    if (!path.resolve(filePath).startsWith(path.resolve(rootDir))) {
+      res.writeHead(403);
+      res.end('Forbidden');
+      return;
+    }
+    if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+      res.writeHead(404);
+      res.end('Not found');
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': CONTENT_TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream' });
+    fs.createReadStream(filePath).pipe(res);
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE' && attempt < 10) {
+      startServer(rootDir, port + 1, htmlFile, attempt + 1);
+    } else {
+      console.error(`  Could not start compare server: ${err.message}`);
+      console.error(`  Falling back to file:// — open ${path.join(rootDir, htmlFile)} manually.`);
+    }
+  });
+
+  server.listen(port, () => {
+    const url = `http://localhost:${port}/${htmlFile}`;
+    console.log(`\n  serving over http → ${url}`);
+    console.log(`  (Ctrl+C to stop)`);
+    exec(`open "${url}"`, () => {});
+  });
 }
 
 function listDesktopPrefixes(files) {
@@ -151,12 +231,13 @@ function normalizeEntryUrl(entryUrl) {
   return trimmed ? `${trimmed}/` : '';
 }
 
-function generateHtml(slug, liveUrl, panels) {
+function generateHtml(slug, sectionName, liveUrl, panels) {
+  const heading = sectionName ? `${slug} — ${sectionName}` : slug;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Compare — ${slug}</title>
+  <title>Compare — ${heading}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #111; color: #eee; }
@@ -253,7 +334,7 @@ function generateHtml(slug, liveUrl, panels) {
 </head>
 <body>
   <header>
-    <h1>${slug}</h1>
+    <h1>${heading}</h1>
     <div class="controls">
       <div class="btn-group" id="bp-tabs">
         ${panels.map((p, i) => `<button data-bp="${p.name}"${i === 0 ? ' class="active"' : ''}>${p.name.charAt(0).toUpperCase() + p.name.slice(1)} <span style="opacity:0.5">${p.width}px</span></button>`).join('\n        ')}

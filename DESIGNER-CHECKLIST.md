@@ -21,6 +21,14 @@ The export tool accesses your Figma file via the API. A standard shared link is 
 - Section frames are **top-level** on the Sections page — not nested inside other frames
 - Section frames follow the naming pattern `{category}{number}-{breakpoint}` — e.g. `hero1-desktop`, `hero1-tablet`, `hero1-mobile`. This matches the category and variant number in the external reference, [campaign-cart-starter-templates `src/landing`](https://github.com/NextCommerceCo/campaign-cart-starter-templates/tree/main/src/landing), and determines the export filename (e.g. `hero1` → `hero-1.html`)
 
+### When assembling a full page for export
+
+- Place the section frames inside **one page wrapper frame**, stacked in **top-to-bottom page order** — this is how the export reads the section sequence
+- Keep each section's **three breakpoint frames together** — don't park a mobile frame elsewhere on the canvas. A breakpoint that lives outside the wrapper gets missed or wrongly derived from another breakpoint
+- **Delete or archive stale/duplicate variant frames.** Two frames with the same name (e.g. three copies of `nav2-desktop`) cause the wrong one to be exported
+
+> If the file has duplicate-named frames or breakpoints scattered outside the wrapper, the export will pause and ask you to either point at the canonical wrapper frame or tidy the file first.
+
 ---
 
 ## Breakpoint variants
@@ -64,6 +72,7 @@ Every image layer must be named with one of three prefixes. Pick the right one �
 - `bg:` images are placed as **fills on the section or column frame** — not as a floating layer
 - `img:` images are **fully contained within their frame** — no bleed, no offset, transparent PNG background, full subject visible
 - `img-group:` has a **single parent group/frame** that wraps all child layers — export targets the parent, not the children
+- **Blended / multi-fill backgrounds:** if a background is built from **multiple stacked fills** on one frame, or uses **opacity or a blend mode**, the export tool cannot reconstruct it reliably (it sees one flat fill and loses the blend). **Provide a single flattened PNG** of that background, or split it into per-column `bg:` fills — and flag it to the developer before handoff
 
 ---
 
