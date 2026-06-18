@@ -105,17 +105,13 @@ Start the preview:
 npm run dev
 ```
 
-The agent can then generate the compare page:
+The agent can then generate the compare page. To view it yourself, add `--serve` so it opens over http:
 
 ```bash
-npm run compare -- novaburn hero-1
+npm run compare -- novaburn hero-1 --serve
 ```
 
-Open:
-
-```text
-src/novaburn/_ref/compare.html
-```
+This writes a per-section page (`src/novaburn/_ref/compare-hero-1.html`) and opens it at a `http://localhost:4100/...` URL. Opening the file directly (`file://`) leaves the Figma column blank in some browsers, so use `--serve` to view it. Press Ctrl+C to stop the server when you're done.
 
 The left side is the Figma screenshot. The right side is the rendered HTML.
 

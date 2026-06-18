@@ -532,6 +532,12 @@ The image is a **decorative fill** that covers a section or column. Content sits
 
 **Asset export:** use `export-node.sh` on the section/column node to get the canvas-rendered version at the correct crop.
 
+**Multi-fill / blended backgrounds — trust the screenshot, request a flattened PNG.** When a designer composites a background from **multiple stacked fills** on one frame (e.g. a product scene on the left + an icy texture behind the right column, or two image layers blended via opacity/blend mode), MCP does **not** round-trip it cleanly: it lists the layers as separate fills, drops opacity/blend modes, and you effectively get one usable fill. Naively stacking the top fill at 100% produces the wrong background (e.g. an orange grunge texture spanning the whole section when the visible design is teal crystals). Rules:
+
+- Don't trust the single emitted fill — open the **screenshot** and check whether the background is actually two+ distinct fills (different per column/region).
+- The **preferred fix is to ask the designer for a single flattened PNG** of the background up front, then scope it to the element that owns it (texture behind the *content column only*, product image in the *product column*) over a solid base colour — don't stretch one fill across the whole `<section>`.
+- If rebuilding from fills, export each region's visual separately with `export-node.sh` on the column/sub-frame that owns each fill, not one section-wide fill.
+
 ---
 
 #### Pattern 2 — `img:` Contained Image
@@ -831,9 +837,36 @@ Frame names use `{category}{number}-{breakpoint}` (e.g. `hero1-desktop`). Export
 
 This is the validated step-by-step process from the hero-1 section export.
 
+### Step 0 — Confirm the page wrapper and reconcile breakpoint frames (full-page exports)
+
+Before fetching section nodes for a full-page export, establish which frames are canonical. The Figma file often contains duplicate variant copies and scratch frames, and a section's breakpoints are not guaranteed to sit together.
+
+1. **Confirm the canonical layout wrapper frame** with the designer/user, scope `get_metadata` to it (not the whole page — a full-page dump can be >1M chars), and **sort its children by y-position** to get the real section list *in page order*.
+2. **Reconcile against a whole-document name search** for every `*-desktop` / `*-tablet` / `*-mobile` frame. A real breakpoint frame can live *outside* the wrapper (a designer can park a `bottomcta1-mobile` elsewhere on the canvas), and duplicate-named frames (e.g. `nav2-desktop` appearing 7×) mean the wrong node is easy to export.
+3. **If you find duplicate-named frames or a breakpoint outside the wrapper, stop and ask the designer** rather than guessing — this is a Figma-structure precondition the designer owns (see DESIGNER-CHECKLIST.md):
+
+```text
+Your Figma file has duplicate or orphaned breakpoint frames
+(e.g. `nav2-desktop` appears multiple times; `bottomcta1-mobile`
+sits outside the page wrapper). To export the right frames, either:
+  (a) tell me the canonical page-wrapper frame node ID, or
+  (b) tidy the file so each section's 3 breakpoints sit together
+      under one wrapper and stale duplicates are removed.
+Which would you prefer?
+```
+
+This applies to single-agent exports too, not just parallel boards: it disambiguates stale copies, yields correct assembly order, and replaces a giant page dump with one scoped call. When the scoped metadata is still large, it auto-saves to a file — parse it with jq/python from disk, don't read it into context.
+
 ### Step 1 — Fetch all 3 breakpoint nodes in parallel — **do not write any HTML until this is done**
 
 Every section has desktop, tablet, and mobile variants. Fetch all three simultaneously with `get_design_context` **before writing a single line of HTML**. Starting early with incomplete design information leads to structural mistakes that are expensive to undo.
+
+**Token-saving variant (optional — validated on a reflowing hero and a UGC Swiper section).** The 3× `get_design_context` is the safe default but also the #1 token sink (each call returns a full code dump *plus* a screenshot, and the tablet/mobile trees are ~90% identical to desktop). To save ~40–50% of per-section MCP tokens you MAY instead fetch **`get_design_context` for desktop only** + **`get_screenshot` for tablet and mobile** (image only). This is reliable for **structure and interactivity** — screenshots clearly reveal reflow/reorder (e.g. a heading moving above an image), column-count changes, card stacking, and slider/accordion chrome (pagination pills, nav arrows). Always read responsive **font sizes from the typography table** (validated exact against MCP fallbacks at every breakpoint — see **Design Tokens**), never from a screenshot.
+
+**Pull the full `get_design_context` for a breakpoint** (don't rely on desktop code + screenshot) when:
+- **Exact per-breakpoint spacing / padding / corner-radius matters.** These token values often *shrink* at smaller breakpoints (observed: content gaps `32→26→20`, thumbnail radius `16→12→8`, section padding `60→48→40`) and are **not** present in the desktop code; a screenshot only approximates them. If the section is spacing-sensitive, fetch the full tablet/mobile context.
+- **A distinct per-breakpoint image asset/crop exists.** A breakpoint can use its own node (e.g. `img:hero1-product-mobile`, a 375×300 crop) separate from the desktop image. Desktop code won't reveal it — if a breakpoint screenshot shows a differently-cropped image, fetch that breakpoint (and export that node).
+- **The screenshot shows a structural change you cannot confidently read.** When in doubt, fetch — the mandate above is the fallback.
 
 **Do not re-fetch** `get_design_context` during HTML refinement. Work from the data and screenshots you already have, the compare tool, and saved notes. Call MCP again only if the Figma file changed or something is genuinely ambiguous — repeat calls add **rate-limit pressure** (see **Figma API rate limits & hygiene** below).
 
@@ -1029,8 +1062,12 @@ Generate a side-by-side compare page (Figma screenshot vs live iframe):
 npm run compare <slug>
 npm run compare <slug> <ref-prefix>
 npm run compare <slug> <ref-prefix> 3001
-open src/<slug>/_ref/compare.html
+open src/<slug>/_ref/compare-<ref-prefix>.html
 ```
+
+The compare page is written **per section** as `compare-<ref-prefix>.html` (it falls back to `compare.html` only when no section can be determined). This keeps parallel exports from clobbering each other's compare page.
+
+**To view it, add `--serve`** (`npm run compare <slug> <ref-prefix> --serve`): it boots a small static http server for `_ref/` and opens the page over http, so the Figma columns and the live iframe both load over http. Opening the file directly as `file://` leaves the Figma reference columns **blank** in some browsers (they block local `file://` images on a page that also loads an http iframe). When generating the page as part of an export flow, **omit `--serve`** — it blocks until Ctrl+C.
 
 `<ref-prefix>` matches the `save-ref.sh` section name (`{ref-prefix}-desktop.png`, etc.). If omitted and multiple ref sets exist in `_ref/`, the compare script picks deterministically and warns — pass `<ref-prefix>` to select which screenshot set to use.
 
@@ -1038,7 +1075,7 @@ Requires Figma ref images from Step 5. The compare page shows the Figma PNG on t
 
 **Keyboard shortcuts:** `D` / `T` / `M` — switch breakpoint
 
-**Refinement loop:** edit `_includes/landing/{section}.html` → save → refresh `compare.html` → spot differences → repeat until it matches.
+**Refinement loop:** edit `_includes/landing/{section}.html` → save → refresh `compare-<section>.html` → spot differences → repeat until it matches.
 
 ### Figma API rate limits & hygiene
 
@@ -1069,14 +1106,14 @@ At the end of a section export, refresh the compare workflow. The node IDs are a
 ```bash
 ./scripts/save-ref.sh <slug> <section> <desktop-node-id> <tablet-node-id> <mobile-node-id>
 npm run compare <slug> <section>
-open src/<slug>/_ref/compare.html
+open src/<slug>/_ref/compare-<section>.html
 ```
 
 **If `_ref/` already has the right `{section}-*.png` set** (iterate-only pass), skip `save-ref` and run:
 
 ```bash
 npm run compare <slug> <section>
-open src/<slug>/_ref/compare.html
+open src/<slug>/_ref/compare-<section>.html
 ```
 
 Use the same `<section>` string for `save-ref.sh` and `npm run compare` when `_ref/` holds multiple section ref sets.
