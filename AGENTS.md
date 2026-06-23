@@ -857,6 +857,32 @@ Which would you prefer?
 
 This applies to single-agent exports too, not just parallel boards: it disambiguates stale copies, yields correct assembly order, and replaces a giant page dump with one scoped call. When the scoped metadata is still large, it auto-saves to a file — parse it with jq/python from disk, don't read it into context.
 
+### Step 0b — Parallel section extraction: agents return data, the coordinator assembles
+
+When a full page is exported by **multiple section agents in parallel** (one agent per section, dispatched from the Step-0 page-order list), the agents MUST NOT write to any **shared assembly file**. Parallel writers to one file silently lose each other's edits — on the Shield (Chamelo) build, concurrent agents editing `landing.html` clobbered each other's frontmatter and `campaign_include` lines, and the page had to be reassembled by hand. This was the single sharpest cost spike of that build.
+
+**The rule: extraction agents own per-section files only; one coordinator owns every shared assembly file.** Never let a parallel agent edit a shared file — the coordinator merges.
+
+Shared assembly files an extraction agent must **never** touch:
+
+- `landing.html` / `presell.html` — both the `campaign_include` order **and** the page frontmatter copy block
+- `_data/campaigns.json` — the entry-page registration
+- `assets/js/landing.js` and `assets/css/tokens.css` — shared behaviour and tokens
+
+Each extraction agent produces **two things only**, and writes nothing shared:
+
+1. Its **section partial** — `_includes/landing/{section}.html` (its own file, safe to write) plus that section's `images/{section}/` assets and `_ref/{section}-*.png` (also per-section, see Step 5 / Step 8).
+2. A **YAML copy block** for that section's frontmatter, namespaced by partial (`hero_1_headline:`, `faq_1_question_1:`, `reviews_2_quote_3:`, …) — **returned in the agent's result, not merged into `landing.html` by the agent.**
+
+The **coordinator** (the single orchestrating session) then assembles centrally, once all agents report back:
+
+- appends each section's `{% campaign_include '{section}.html' %}` to `landing.html` in the Step-0 page order;
+- merges every returned YAML copy block into the `landing.html` / `presell.html` frontmatter;
+- registers the entry page in `_data/campaigns.json`;
+- folds any new interactive pattern into the shared `assets/js/landing.js`.
+
+This is the validated recovery from the Shield build: agents returned data, one writer assembled, and the clobbering stopped. The per-section compare pages already follow this discipline (`compare-<section>.html`, see Step 8) — extend the same single-writer rule to **every** shared assembly file.
+
 ### Step 1 — Fetch all 3 breakpoint nodes in parallel — **do not write any HTML until this is done**
 
 Every section has desktop, tablet, and mobile variants. Fetch all three simultaneously with `get_design_context` **before writing a single line of HTML**. Starting early with incomplete design information leads to structural mistakes that are expensive to undo.
@@ -1096,6 +1122,19 @@ Figma applies **per-minute** limits to **MCP / REST** usage. Heavy bursts come f
 4. **Batch `export-node.sh` sequentially** with a few seconds between runs when exporting many assets.
 5. If you hit **429 / throttling**, wait **~60 seconds** and retry; reduce parallel Figma work first.
 6. `figma-remote-mcp` can help with transport/auth stability, but it **does not** increase Figma API quotas; the same rate-limit hygiene rules still apply.
+
+### Resumability — recovering from an MCP/API drop mid-run
+
+A long full-page extraction can lose the Figma MCP connection or hit an API **529 / overloaded** mid-run. On the Shield build a 529 plus a Figma MCP disconnect killed the in-flight extraction agents and forced a from-scratch restart. **Don't restart the whole page — resume from the last completed section.**
+
+What makes resume cheap is the coordinator-assembles model (**Step 0b**): each finished section is already a self-contained artifact — its `_includes/landing/{section}.html` partial, its `images/{section}/` assets, its `_ref/{section}-*.png`, and its returned YAML copy block. A drop loses only the in-flight section(s), never finished work.
+
+**On a Figma MCP disconnect or API 529 mid-run:**
+
+1. **Fail over to the alternate Figma MCP server.** If the local Figma MCP plugin dropped, switch to the remote endpoint `figma-remote-mcp` (or vice-versa) — both are set up under **Getting Started → Enable the Figma MCP plugin**. The remote endpoint is a transport fallback only; it does **not** raise Figma's per-minute quota, so keep the rate-limit hygiene above.
+2. **If it's a 529 / throttle, wait ~60s** before retrying (item 5 above) and reduce parallel Figma work on the retry.
+3. **Re-run from the last completed section, not from section 1.** Diff the Step-0 page-order list against the partials already in `_includes/landing/` (and the ref sets in `_ref/`) to find the resume point, then re-dispatch only the unfinished sections.
+4. Coordinator assembly is **idempotent per section** — re-appending an already-present `campaign_include`, re-merging a copy block already in frontmatter, or re-registering the entry page in `_data/campaigns.json` is a no-op, so a partial re-run can't double-insert.
 
 ### After every export — auto-open the compare tool
 
