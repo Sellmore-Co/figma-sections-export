@@ -151,8 +151,12 @@ Select your campaign from the list → opens the configured `entry_url`, usually
 | `npm run new <slug> <section>` | Scaffold a landing section preview |
 | `npm run new <slug> presell "Display Name" presell-page` | Scaffold a standalone presell page |
 | `npm run compress <slug>` | Optimise all images in `src/<slug>/assets/images/` — run after downloading Figma assets and before final handoff |
+| `npm run extract -- --slug <slug> --section <name> --desktop <url> [--tablet <url>] [--mobile <url>]` | REST-based interactive export: responsive `<picture>` + per-breakpoint CTA hotspots, or a native `<details>` accordion for FAQ sections (see [docs/interactive-export.md](docs/interactive-export.md)) |
+| `npm run annotations -- <figma-url>` | Probe whether Dev Mode annotations / comments are reachable for the current token (see [docs/figma-annotations.md](docs/figma-annotations.md)) |
 
 **`npm run compress`** runs lossless/lossy compression on JPG, PNG, and WebP assets in-place. Run it once per section after all images are downloaded. Do not run it repeatedly on already-compressed files.
+
+**`npm run extract`** is the token-based REST extraction path — a fallback for the Figma MCP plugin, which can disconnect mid-run. It emits interactive output instead of a flat image wrapped in a whole-section link: a responsive `<picture>` with a transparent `<a>` positioned over **only the CTA button** per breakpoint (geometry read from each frame's `absoluteBoundingBox`), or a native `<details>` accordion built from FAQ Q&A. Copy is printed as a frontmatter block to paste into `landing.html`. See [docs/interactive-export.md](docs/interactive-export.md); for authored copy in Dev Mode annotations see [docs/figma-annotations.md](docs/figma-annotations.md).
 
 **Shared landing behavior:** new landing campaigns copy `assets/js/landing.js` from `templates/landing/assets/js/landing.js`. Update that template when the reference behavior changes; do not generate one-off per-section accordion or Swiper scripts. The included `data-countdown` helper is a landing-only fallback; promo/checkout timers should follow the campaign-cart/web-component timer pattern from the checkout templates.
 
