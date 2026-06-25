@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { Liquid } = require('liquidjs');
 const { SCHEMA_VERSION: MANIFEST_SCHEMA_VERSION, PAGE_DETECTORS } = require('./write-handoff-manifest');
+const { extractFontUsages, isSafeFamily, parseFontFaces } = require('./font-contract');
 
 const root = path.resolve(__dirname, '..');
 const srcRoot = path.join(root, 'src');
@@ -127,7 +128,50 @@ function validateCampaign(campaignDir) {
   }
 
   validateJsFiles(jsFiles, campaignDir);
+  validateFontContract(campaignDir, htmlFiles);
   validateHandoffManifest(campaignDir);
+}
+
+function validateFontContract(campaignDir, htmlFiles) {
+  const relCampaign = relative(campaignDir);
+
+  // Collect every custom (non-system, non-Google-default) font family used.
+  const usedFamilies = new Map(); // family -> example file (relative)
+  for (const file of htmlFiles) {
+    const html = fs.readFileSync(file, 'utf8');
+    for (const { family } of extractFontUsages(html)) {
+      if (isSafeFamily(family)) continue;
+      if (!usedFamilies.has(family)) usedFamilies.set(family, relative(file));
+    }
+  }
+  if (!usedFamilies.size) return;
+
+  // Read the font contract (assets/css/fonts.css).
+  const cssPath = path.join(campaignDir, 'assets', 'css', 'fonts.css');
+  const css = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, 'utf8') : '';
+  const faces = parseFontFaces(css);
+  const declared = new Set(faces.map((f) => f.family.toLowerCase()));
+
+  for (const [family, exampleFile] of usedFamilies) {
+    if (!declared.has(family.toLowerCase())) {
+      errors.push(
+        `${exampleFile}: custom font "${family}" is used but has no @font-face in assets/css/fonts.css — run \`npm run fonts -- ${path.basename(campaignDir)}\` (text falls back to ui-sans-serif otherwise)`
+      );
+    }
+  }
+
+  // Each declared face must resolve to at least one font file on disk.
+  // A .woff2-only handoff is fine, so warn only when NO local source exists.
+  for (const face of faces) {
+    const localUrls = face.srcUrls.filter((url) => !/^(https?:)?\/\//.test(url) && !url.startsWith('data:'));
+    if (!localUrls.length) continue;
+    const anyPresent = localUrls.some((url) => fs.existsSync(path.resolve(path.dirname(cssPath), url)));
+    if (!anyPresent) {
+      warnings.push(
+        `${relative(cssPath)}: @font-face "${face.family}" has no font file on disk (${localUrls.join(', ')}) — the brand/designer must supply it before handoff`
+      );
+    }
+  }
 }
 
 function validateHandoffManifest(campaignDir) {

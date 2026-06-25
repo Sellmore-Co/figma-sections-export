@@ -14,6 +14,7 @@
     "compress:preview": "node scripts/compress-campaign-assets.js --preview",
     "migrate": "campaign-migrate",
     "new": "bash scripts/new-section.sh",
+    "fonts": "node scripts/generate-fonts-css.js",
     "compare": "node scripts/compare-ref.js",
     "validate": "node scripts/validate-export.js",
     "handoff": "node scripts/handoff.js",

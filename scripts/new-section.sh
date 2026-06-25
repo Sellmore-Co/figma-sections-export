@@ -120,6 +120,7 @@ write_landing_layout() {
   </script>
 
   <link rel="stylesheet" href="{{ 'css/tokens.css' | campaign_asset }}">
+  <link rel="stylesheet" href="{{ 'css/fonts.css' | campaign_asset }}">
   {% for style in styles %}
   <link rel="stylesheet" href="{{ style | campaign_asset }}">
   {% endfor %}
@@ -156,6 +157,7 @@ write_presell_layout() {
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="{{ 'css/presell/tokens.css' | campaign_asset }}">
+  <link rel="stylesheet" href="{{ 'css/fonts.css' | campaign_asset }}">
   {% for style in styles %}
   <link rel="stylesheet" href="{{ style | campaign_asset }}">
   {% endfor %}
@@ -201,6 +203,21 @@ write_tokens() {
 .text-caption { font-size: 12px; font-weight: 500; line-height: 1.5; }
 .text-overline { font-size: 12px; font-weight: 700; line-height: 1.5; text-transform: uppercase; letter-spacing: 0.08em; }
 TOKENSEOF
+}
+
+write_fonts_stub() {
+  local out="$CAMPAIGN_DIR/assets/css/fonts.css"
+  if [[ -f "$out" ]]; then return; fi
+  mkdir -p "$(dirname "$out")"
+  cat > "$out" << 'FONTSEOF'
+/* Brand web fonts — STUB.
+ *
+ * Run `npm run fonts -- <slug>` after exporting sections. It scans the markup
+ * for Tailwind font-['Family'] classes and replaces this stub with @font-face
+ * declarations + the list of .woff2 files the brand must supply (assets/fonts/).
+ * Custom fonts fall back to ui-sans-serif until those files exist.
+ */
+FONTSEOF
 }
 
 write_landing_js() {
@@ -250,6 +267,7 @@ create_landing_section() {
   ensure_campaign_shell
   write_landing_layout
   write_tokens "$CAMPAIGN_DIR/assets/css/tokens.css"
+  write_fonts_stub
   write_landing_js
   mkdir -p "$CAMPAIGN_DIR/assets/images/$NAME"
 
@@ -297,6 +315,7 @@ create_presell_page() {
   ensure_campaign_shell
   write_presell_layout
   write_tokens "$CAMPAIGN_DIR/assets/css/presell/tokens.css"
+  write_fonts_stub
   write_presell_countdown
   mkdir -p "$CAMPAIGN_DIR/assets/images/presell"
 
