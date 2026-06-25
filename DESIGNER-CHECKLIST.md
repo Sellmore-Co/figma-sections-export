@@ -92,5 +92,13 @@ Every image layer must be named with one of three prefixes. Pick the right one �
 
 ## Fonts
 
-- All fonts are **web-safe or Google Fonts** (Plus Jakarta Sans, Inter, etc.)
-- If the design uses a display or script font that won't load in a browser (e.g. a custom brand script), **flag it to the developer before handoff** — the text will be exported as an image rather than live text
+The export reads each text layer's Figma font family and emits a matching `font-[…]` class. But **Figma/MCP does not hand over the actual font files**, and the tool cannot create them — a font binary can't be generated, only supplied. So a custom brand font renders as the `ui-sans-serif` fallback until its file is added to the handoff.
+
+- **Web-safe or Google Fonts** (Plus Jakarta Sans, Inter, etc.) — nothing to supply. The browser/Google CDN already serves them; the export skips them automatically.
+- **Custom / brand fonts** (anything not web-safe or Google) — for every one used in the design, before handoff:
+  - [ ] Supply the **web font files** (`.woff2` preferred, optional `.woff` fallback) for each weight/style actually used. These come from the designer or brand (license/subset as needed) — Figma cannot export them.
+  - [ ] Confirm the **exact family name** as it should read in CSS, watching spaced-vs-no-space (`"TT Octosquares"` ≠ `TTOctosquares`).
+  - [ ] List which **weights** are needed (e.g. 400 / 500 / 700) so unused weights aren't shipped.
+- If the files cannot be supplied, **flag it before handoff** — the affected text either falls back to a system font or must be exported as an image instead of live text.
+
+The tool builds the wiring for you: `npm run fonts -- <slug>` writes `assets/css/fonts.css` (the `@font-face` declarations) and lists the missing `.woff2` files in `assets/fonts/FONTS-REQUIRED.txt`. Drop the supplied files into `assets/fonts/` and they load automatically — no hand-written CSS. `npm run validate` fails if a custom font is used with no `@font-face`, and warns while its file is still missing.

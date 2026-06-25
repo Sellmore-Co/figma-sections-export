@@ -143,6 +143,16 @@ npm run handoff -- novaburn hero-1
 
 The handoff command validates the export, generates a compare page when it can, and compresses final images once.
 
+### Custom brand fonts
+
+If the design uses a custom font (anything that is not web-safe or a Google Font like Plus Jakarta Sans / Inter), the actual font files must travel with the handoff — Figma cannot export them and the tool cannot generate them. After exporting the sections:
+
+```bash
+npm run fonts -- novaburn
+```
+
+This writes `assets/css/fonts.css` (the `@font-face` wiring) and lists the font files it needs in `assets/fonts/FONTS-REQUIRED.txt`. Get the `.woff2` files from the designer or brand, drop them into `assets/fonts/`, and they load automatically — no CSS to hand-write. `npm run validate` fails if a custom font has no `@font-face` and warns while its file is still missing, so this can't silently ship as a system-font fallback. Google/web-safe fonts need none of this.
+
 Compression happens at final handoff only and only touches:
 
 ```text
