@@ -892,6 +892,11 @@ Which would you prefer?
 
 This applies to single-agent exports too, not just parallel boards: it disambiguates stale copies, yields correct assembly order, and replaces a giant page dump with one scoped call. When the scoped metadata is still large, it auto-saves to a file — parse it with jq/python from disk, don't read it into context.
 
+**Hard rule — never fabricate a missing breakpoint.** A section needs three real, distinctly-named frames: `{name}-desktop`, `{name}-tablet`, `{name}-mobile`. If you cannot resolve a real, distinct frame for any breakpoint — because it is missing, or because duplicate/mislabeled frames make it ambiguous (the Chamelo case: all three `compare` frames were named `compare4-desktop`, so only desktop was found) — **stop and ask the designer; do NOT invent a layout for the missing breakpoint.** Inventing a mobile/tablet design that does not exist in Figma is the worst failure mode: it ships a fabricated layout that silently passes every downstream check. This holds in both flows:
+
+- **Explicit 3-link flow** — if a pasted link is missing, or two of the three links resolve to the same frame (or same `-breakpoint` suffix), say so and ask for the correct link instead of guessing the third breakpoint.
+- **Discovery / full-page flow** — if the name search finds fewer than three distinct breakpoint frames for a section, flag exactly which breakpoint is missing/duplicated and ask; never silently export the breakpoints you found and synthesize the rest.
+
 ### Step 0b — Parallel section extraction: agents return data, the coordinator assembles
 
 When a full page is exported by **multiple section agents in parallel** (one agent per section, dispatched from the Step-0 page-order list), the agents MUST NOT write to any **shared assembly file**. Parallel writers to one file silently lose each other's edits — on the Shield (Chamelo) build, concurrent agents editing `landing.html` clobbered each other's frontmatter and `campaign_include` lines, and the page had to be reassembled by hand. This was the single sharpest cost spike of that build.
