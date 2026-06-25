@@ -599,6 +599,41 @@ The MCP returns the **original uploaded source file** — not what Figma renders
 
 ---
 
+## Font Contract
+
+The export lifts each text layer's Figma font family into a Tailwind arbitrary class, e.g. `font-['TT_Octosquares',sans-serif]`. Tailwind turns the underscores into spaces, so the resolved CSS family is `"TT Octosquares"`. Two things must then be true or the type silently falls back to `ui-sans-serif`:
+
+1. an `@font-face` declares that exact (spaced) family, and
+2. the actual web font file (`.woff2`) ships with the campaign.
+
+**The tool builds the wiring; it cannot create the font file.** A font binary can only be supplied, never generated — Figma/MCP do not hand it over. So the realistic deliverable is: scaffold the `@font-face` contract, then fail loudly until the files arrive.
+
+**Which fonts need this:**
+
+- **Web-safe fonts** (Arial, Georgia) and **Google Fonts** (Plus Jakarta Sans, Inter) — nothing to do. The browser or the layout's Google `<link>` already serves them; the generator skips them automatically.
+- **Custom / brand fonts** (anything else) — need both an `@font-face` and a supplied `.woff2`.
+
+**Workflow — run after exporting sections, before handoff:**
+
+```bash
+npm run fonts -- <slug>
+```
+
+This scans the campaign's HTML for custom `font-[…]` families and writes `assets/css/fonts.css` (the `@font-face` declarations plus backing rules for the exact arbitrary classes used), creates `assets/fonts/`, and lists the required files in `assets/fonts/FONTS-REQUIRED.txt`. The font files come from the designer/brand — drop the `.woff2` into `assets/fonts/` and they load automatically. `fonts.css` is linked from `base-landing.html` / `base-presell.html` already. It is `@font-face` + `font-family` only, so it cannot regress layout or colour.
+
+`npm run validate` **errors** when a custom font is used with no matching `@font-face`, and **warns** when an `@font-face` has no font file on disk yet — so a missing-font regression can no longer ship silently.
+
+### Tailwind v4 content scope (downstream campaigns)
+
+The preview in this repo uses the Tailwind v3 play CDN, but consuming campaigns build with **Tailwind v4**. Two v4 facts matter for the handoff:
+
+- v4 **does** emit quote+comma arbitrary utilities like `font-['TT_Octosquares',sans-serif]` — that syntax is not the problem.
+- v4's automatic content detection **skips paths listed in `.gitignore`**. If the consumed export HTML lives in a gitignored/build directory, v4 generates **no** rules for the classes in it (not just fonts — every utility). The campaign's Tailwind entry must therefore register the HTML explicitly, e.g. `@source "../../**/*.html";`.
+
+The `fonts.css` backing rules (`.font-\[\'TT_Octosquares\'\,sans-serif\] { … }`) are plain CSS, so the brand fonts resolve even if a downstream build mis-scopes its content — but the correct fix downstream is the `@source` registration.
+
+---
+
 ## CSS Strategy (Hybrid — Recommended)
 
 Use Tailwind utilities for layout (flex, grid, spacing, responsive) and custom CSS for section-specific styling.
@@ -1039,6 +1074,14 @@ npm run compress <slug>
 
 This optimises all JPG, PNG, and WebP files in `src/<slug>/assets/images/` in-place. Run once after downloading — do not repeat on already-compressed files.
 
+If the section uses a custom (non-Google, non-web-safe) font, scaffold the font contract now:
+
+```bash
+npm run fonts -- <slug>
+```
+
+This writes `assets/css/fonts.css` and lists the `.woff2` files the brand must supply in `assets/fonts/FONTS-REQUIRED.txt`. See **Font Contract** above. The font files come from the designer/brand — the tool cannot generate them.
+
 ### Step 7 — Preview project structure
 
 ```
@@ -1161,6 +1204,7 @@ The developer needs `npm run dev` running for the live iframe.
 | Video/media thumbnail expands to natural height                    | The video or thumbnail wrapper needs an explicit height or `aspect-*` class (e.g. `aspect-video`) to constrain it. Without this the element grows to its natural image dimensions.                                                                                    |
 | Swiper/carousel nav arrows hand-coded with generic SVGs            | Don't invent new arrow SVGs. Copy `data-swiper-prev` / `data-swiper-next` button markup from the closest reference partial for the same section category — arrow style and size must match shipped pages.                                                              |
 | Setting `gap-0` when layout direction changes at a breakpoint      | When switching from `flex-col` to `flex-row` at a breakpoint, the gap usually also changes (e.g. `gap-4` vertical → `gap-8` horizontal). Set the correct gap value per breakpoint explicitly — don't use `gap-0` as a reset.                                          |
+| Custom `font-['Family']` class with no `@font-face` / no font file | The type silently falls back to `ui-sans-serif`. Run `npm run fonts -- <slug>` to scaffold `assets/css/fonts.css`, then have the brand supply the `.woff2` into `assets/fonts/`. The tool cannot generate font files. Google/web-safe fonts are skipped automatically. See **Font Contract**. `npm run validate` catches the missing `@font-face`. |
 
 
 ---
@@ -1194,5 +1238,6 @@ The developer needs `npm run dev` running for the live iframe.
 - Text properties do NOT use `| default:` fallbacks — omit them entirely so missing variables are visible during dev/QA rather than silently showing placeholder text in production
 - Images exported to `assets/images/`
 - CSS generated (Tailwind classes or custom or both)
+- **Fonts:** any custom (non-Google, non-web-safe) `font-[…]` family has a matching `@font-face` in `assets/css/fonts.css` (run `npm run fonts -- <slug>`) and its `.woff2` is supplied in `assets/fonts/` — `npm run validate` passes the font check. See **Font Contract**
 - JS files listed in section metadata
 - Section manifest updated
