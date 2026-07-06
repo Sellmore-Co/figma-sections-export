@@ -164,7 +164,9 @@ console.log('CLI integration (offline)');
 test('export-section.js --nodes-json --dry-run writes a hotspot partial', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fse-test-'));
   const outFile = path.join(tmpDir, 'hero-1.html');
+  const testSlugDir = path.join(__dirname, '..', '..', 'src', '__test__');
   try {
+    fs.rmSync(testSlugDir, { recursive: true, force: true });
     execFileSync('node', [
       path.join(__dirname, '..', 'export-section.js'),
       '--slug', '__test__',
@@ -181,8 +183,10 @@ test('export-section.js --nodes-json --dry-run writes a hotspot partial', () => 
     assert.match(html, /<picture/);
     assert.match(html, /left:8\.333%/);
     assert.match(html, /data-hotspot-root/);
+    assert.ok(!fs.existsSync(path.join(testSlugDir, '.campaigns-os', 'source-export-log.json')));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(testSlugDir, { recursive: true, force: true });
   }
 });
 test('export-section.js infers accordion from faq section name', () => {
@@ -202,6 +206,77 @@ test('export-section.js infers accordion from faq section name', () => {
     const html = fs.readFileSync(outFile, 'utf8');
     assert.match(html, /<details/);
     assert.match(html, /\{\{ faq_1_q_1 \}\}/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('export-section.js fails before mutating when the partial exists without --force', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fse-test-'));
+  const outFile = path.join(tmpDir, 'hero-1.html');
+  const testSlugDir = path.join(__dirname, '..', '..', 'src', '__test__');
+  try {
+    fs.rmSync(testSlugDir, { recursive: true, force: true });
+    fs.writeFileSync(outFile, 'existing');
+    let error = null;
+    try {
+      execFileSync('node', [
+        path.join(__dirname, '..', 'export-section.js'),
+        '--slug', '__test__',
+        '--section', 'hero-1',
+        '--desktop', '143:1000',
+        '--nodes-json', path.join(FIXTURES, 'hero-nodes.json'),
+        '--dry-run',
+        '--out', outFile,
+      ], { stdio: 'pipe', encoding: 'utf8' });
+    } catch (caught) {
+      error = caught;
+    }
+    assert.ok(error, 'expected export-section.js to fail without --force');
+    assert.match(error.stderr, /re-run with --force/);
+    assert.strictEqual(fs.readFileSync(outFile, 'utf8'), 'existing');
+    assert.ok(!fs.existsSync(path.join(testSlugDir, '.campaigns-os', 'source-export-log.json')));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(testSlugDir, { recursive: true, force: true });
+  }
+});
+
+test('validate-export rejects Figma provenance without semantic materials', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fse-validate-'));
+  try {
+    fs.mkdirSync(path.join(tmpDir, '.campaigns-os'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'landing.html'), '<html><body>Landing</body></html>');
+    fs.writeFileSync(path.join(tmpDir, '.campaigns-os', 'source-html-manifest.json'), JSON.stringify({
+      schema_version: 'source-html-manifest/v0',
+      generator: 'figma-sections-export@1.0.0',
+      campaign_slug: 'invalid',
+      root: '.',
+      producer_provenance: {
+        source_type: 'semantic_figma_export',
+        screenshot_fallback_used: false,
+        semantic_section_count: 0,
+        breakpoint_image_count: 0,
+        material_fingerprint: 'a'.repeat(64),
+        section_exports: [],
+      },
+      pages: [{ page_id: 'landing', path: 'landing.html', page_type: 'landing' }],
+      files: [],
+    }, null, 2));
+
+    let error = null;
+    try {
+      execFileSync('node', [
+        path.join(__dirname, '..', 'validate-export.js'),
+        tmpDir,
+        '--quiet',
+      ], { stdio: 'pipe', encoding: 'utf8' });
+    } catch (caught) {
+      error = caught;
+    }
+    assert.ok(error, 'expected validate-export.js to reject invalid provenance');
+    assert.match(error.stdout, /semantic_section_count/);
+    assert.match(error.stdout, /files\[\] must include at least one section partial/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

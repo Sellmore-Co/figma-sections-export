@@ -196,6 +196,7 @@ function validateHandoffManifest(campaignDir) {
 function validateManifestProvenance(campaignDir, relManifest, manifest) {
   const provenance = manifest.producer_provenance;
   if (!provenance) return;
+  const manifestFiles = Array.isArray(manifest.files) ? manifest.files : [];
 
   if (provenance.source_type !== 'semantic_figma_export') {
     errors.push(`${relManifest}: producer_provenance.source_type must be "semantic_figma_export"`);
@@ -203,8 +204,20 @@ function validateManifestProvenance(campaignDir, relManifest, manifest) {
   if (provenance.screenshot_fallback_used !== false) {
     errors.push(`${relManifest}: producer_provenance.screenshot_fallback_used must be false`);
   }
+  if (!Number.isInteger(provenance.semantic_section_count) || provenance.semantic_section_count <= 0) {
+    errors.push(`${relManifest}: producer_provenance.semantic_section_count must be a positive integer`);
+  }
+  if (provenance.breakpoint_image_count != null && (!Number.isInteger(provenance.breakpoint_image_count) || provenance.breakpoint_image_count < 0)) {
+    errors.push(`${relManifest}: producer_provenance.breakpoint_image_count must be a non-negative integer`);
+  }
   if (!/^[0-9a-f]{64}$/.test(String(provenance.material_fingerprint || ''))) {
     errors.push(`${relManifest}: producer_provenance.material_fingerprint must be a sha256 hex string`);
+  }
+  if (!manifestFiles.some((entry) => entry && entry.role === 'partial')) {
+    errors.push(`${relManifest}: files[] must include at least one section partial for semantic Figma exports`);
+  }
+  if (!manifestFiles.some((entry) => entry && entry.role === 'asset')) {
+    errors.push(`${relManifest}: files[] must include at least one exported asset for semantic Figma exports`);
   }
   if (provenance.export_log) {
     const exportLogPath = path.join(campaignDir, provenance.export_log);
@@ -239,6 +252,10 @@ function validateManifestFiles(campaignDir, relManifest, manifest) {
     }
     if (!entry.path || !entry.sha256) {
       errors.push(`${relManifest}: files[] entry missing path or sha256`);
+      continue;
+    }
+    if (!['page', 'partial', 'layout', 'asset', 'export_log', 'support'].includes(entry.role)) {
+      errors.push(`${relManifest}: files[] entry "${entry.path}" has invalid or missing role`);
       continue;
     }
     if (!/^[0-9a-f]{64}$/.test(String(entry.sha256))) {

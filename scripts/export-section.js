@@ -52,6 +52,13 @@ async function main() {
 
   const section = normalizeSection(requireOpt(opts, 'section'));
   const slug = requireOpt(opts, 'slug');
+  const outPath = opts.out
+    ? path.resolve(opts.out)
+    : path.join(ROOT, 'src', slug, '_includes', 'landing', `${section}.html`);
+
+  if (fs.existsSync(outPath) && !opts.force) {
+    throw new Error(`${relative(outPath)} exists — re-run with --force to overwrite.`);
+  }
 
   // Resolve node ids + file key from URLs / flags / env.
   const nodeInputs = {};
@@ -104,24 +111,16 @@ async function main() {
     ({ html } = await buildHotspot({ section, slug, docs, presentBps, nodeIds, fileKey, opts, summary }));
   }
 
-  const outPath = opts.out
-    ? path.resolve(opts.out)
-    : path.join(ROOT, 'src', slug, '_includes', 'landing', `${section}.html`);
-
-  if (fs.existsSync(outPath) && !opts.force) {
-    summary.warnings.push(`${relative(outPath)} exists — re-run with --force to overwrite.`);
-  } else {
-    fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    fs.writeFileSync(outPath, html);
-    summary.partial = relative(outPath);
-  }
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  fs.writeFileSync(outPath, html);
+  summary.partial = relative(outPath);
 
   if (opts.print) {
     console.log('\n--- partial ---\n');
     console.log(html);
   }
 
-  appendExportLog({ slug, summary, opts });
+  if (!opts['dry-run']) appendExportLog({ slug, summary, opts });
   printSummary(section, summary);
 }
 
