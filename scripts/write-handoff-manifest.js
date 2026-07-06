@@ -16,9 +16,20 @@
 //   "generator": "figma-sections-export@<version>",
 //   "campaign_slug": "<slug>",
 //   "root": ".",                 // self-reference; relative to the manifest's own location
+//   "producer_provenance": {
+//     "source_type": "semantic_figma_export",
+//     "screenshot_fallback_used": false,
+//     "export_log": ".campaigns-os/source-export-log.json",
+//     "figma_file_key": "...",
+//     "semantic_section_count": 15,
+//     "material_fingerprint": "..."
+//   },
 //   "pages": [
 //     { "page_id": "landing", "path": "landing.html", "page_type": "landing", "page_url": "", "source_hash": "..." },
 //     { "page_id": "presell", "path": "presell.html", "page_type": "presell", "page_url": "presell", "source_hash": "..." }
+//   ],
+//   "files": [
+//     { "path": "_includes/landing/hero-1.html", "role": "partial", "sha256": "..." }
 //   ]
 // }
 
@@ -38,13 +49,15 @@ function detectPages(campaignDir, pageIdOverrides = new Map()) {
   PAGE_DETECTORS.forEach((candidate, index) => {
     const full = path.join(campaignDir, candidate.filename);
     if (fs.existsSync(full)) {
-      pages.push({
+      const page = {
         page_id: resolvePageId(candidate, index, pageIdOverrides),
         path: candidate.filename,
         page_type: candidate.page_type,
-        page_url: pageUrlFor(candidate.filename),
         source_hash: sha256File(full),
-      });
+      };
+      const pageUrl = pageUrlFor(candidate.filename);
+      if (pageUrl) page.page_url = pageUrl;
+      pages.push(page);
     }
   });
   return pages;
@@ -84,6 +97,14 @@ function readPackageVersion(root) {
 
 function buildManifest({ campaignDir, slug, generatorRoot, pageIdOverrides }) {
   const pages = detectPages(campaignDir, pageIdOverrides);
+  const files = collectMaterialFiles(campaignDir);
+  const exportLog = readExportLog(campaignDir);
+  const producerProvenance = buildProducerProvenance({
+    campaignDir,
+    generatorRoot,
+    files,
+    exportLog,
+  });
 
   return {
     schema_version: SCHEMA_VERSION,
@@ -91,7 +112,9 @@ function buildManifest({ campaignDir, slug, generatorRoot, pageIdOverrides }) {
     generator: `figma-sections-export@${readPackageVersion(generatorRoot)}`,
     campaign_slug: slug,
     root: '.',
+    producer_provenance: producerProvenance,
     pages,
+    files,
   };
 }
 
@@ -104,6 +127,111 @@ function writeManifest({ campaignDir, slug, generatorRoot, pageIdOverrides }) {
   fs.writeFileSync(outPath, JSON.stringify(manifest, null, 2) + '\n');
 
   return { manifest, outPath };
+}
+
+function collectMaterialFiles(campaignDir) {
+  const files = [];
+  for (const relPath of walk(campaignDir).sort()) {
+    if (!isManifestMaterialPath(relPath)) continue;
+    const fullPath = path.join(campaignDir, relPath);
+    files.push({
+      path: toPosix(relPath),
+      role: fileRole(relPath),
+      sha256: sha256File(fullPath),
+      bytes: fs.statSync(fullPath).size,
+    });
+  }
+  return files;
+}
+
+function isManifestMaterialPath(relPath) {
+  if (relPath === '.campaigns-os/source-html-manifest.json') return false;
+  return (
+    relPath === 'landing.html'
+    || relPath === 'presell.html'
+    || relPath.startsWith(`_includes${path.sep}landing${path.sep}`)
+    || relPath.startsWith(`_layouts${path.sep}`)
+    || relPath.startsWith(`assets${path.sep}`)
+    || relPath === '.campaigns-os/source-export-log.json'
+  );
+}
+
+function fileRole(relPath) {
+  if (/^(landing|presell)\.html$/i.test(relPath)) return 'page';
+  if (relPath.startsWith(`_includes${path.sep}`)) return 'partial';
+  if (relPath.startsWith(`_layouts${path.sep}`)) return 'layout';
+  if (relPath.startsWith(`assets${path.sep}`)) return 'asset';
+  if (relPath === '.campaigns-os/source-export-log.json') return 'export_log';
+  return 'support';
+}
+
+function walk(dir, prefix = '') {
+  if (!fs.existsSync(dir)) return [];
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const relPath = prefix ? path.join(prefix, entry.name) : entry.name;
+    if (entry.isDirectory()) {
+      out.push(...walk(path.join(dir, entry.name), relPath));
+      continue;
+    }
+    if (entry.isFile()) out.push(relPath);
+  }
+  return out;
+}
+
+function readExportLog(campaignDir) {
+  const logPath = path.join(campaignDir, '.campaigns-os', 'source-export-log.json');
+  if (!fs.existsSync(logPath)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(logPath, 'utf8'));
+    return parsed && Array.isArray(parsed.entries) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildProducerProvenance({ campaignDir, generatorRoot, files, exportLog }) {
+  const entries = Array.isArray(exportLog?.entries) ? exportLog.entries : [];
+  const fileKeys = unique(entries.map((entry) => entry.file_key).filter(Boolean));
+  const sectionExports = entries.map((entry) => ({
+    section: entry.section,
+    type: entry.type,
+    file_key: entry.file_key || null,
+    node_ids: entry.node_ids || {},
+    partial: entry.partial || null,
+    images: Array.isArray(entry.images) ? entry.images : [],
+    command: entry.command || null,
+    warnings: Array.isArray(entry.warnings) ? entry.warnings : [],
+  }));
+
+  const semanticSectionCount = files.filter((file) => file.role === 'partial' && /^_includes\/landing\/.+\.html$/i.test(file.path)).length;
+  const breakpointImageCount = files.filter((file) => file.role === 'asset' && /^assets\/images\/.+\.(png|jpe?g|webp)$/i.test(file.path)).length;
+  const packageHash = crypto.createHash('sha256');
+  for (const file of files) packageHash.update(`${file.sha256}  ${file.path}\n`);
+
+  return {
+    source_type: 'semantic_figma_export',
+    screenshot_fallback_used: false,
+    generator_repo: path.basename(generatorRoot),
+    generator_version: readPackageVersion(generatorRoot),
+    export_log: fs.existsSync(path.join(campaignDir, '.campaigns-os', 'source-export-log.json'))
+      ? '.campaigns-os/source-export-log.json'
+      : null,
+    figma_file_key: fileKeys.length === 1 ? fileKeys[0] : null,
+    figma_file_keys: fileKeys,
+    semantic_section_count: semanticSectionCount,
+    breakpoint_image_count: breakpointImageCount,
+    material_fingerprint: packageHash.digest('hex'),
+    section_exports: sectionExports,
+  };
+}
+
+function unique(values) {
+  return [...new Set(values.map((value) => String(value)).filter(Boolean))];
+}
+
+function toPosix(value) {
+  return String(value).split(path.sep).join('/');
 }
 
 if (require.main === module) {

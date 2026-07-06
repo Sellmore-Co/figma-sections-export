@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { Liquid } = require('liquidjs');
 const { SCHEMA_VERSION: MANIFEST_SCHEMA_VERSION, PAGE_DETECTORS } = require('./write-handoff-manifest');
 
@@ -90,7 +91,9 @@ function resolveTargets(rawTargets) {
 
 function validateCampaign(campaignDir) {
   const relCampaign = relative(campaignDir);
-  const files = walk(campaignDir).filter((file) => /\.(html|js|css)$/.test(file));
+  const files = walk(campaignDir)
+    .filter((file) => !file.includes(`${path.sep}template-stock${path.sep}`))
+    .filter((file) => /\.(html|js|css)$/.test(file));
   const htmlFiles = files.filter((file) => file.endsWith('.html'));
   const includeFiles = htmlFiles.filter((file) => file.includes(`${path.sep}_includes${path.sep}`));
   const landingIncludeFiles = includeFiles.filter((file) => file.includes(`${path.sep}_includes${path.sep}landing${path.sep}`));
@@ -177,6 +180,9 @@ function validateHandoffManifest(campaignDir) {
     }
   }
 
+  validateManifestProvenance(campaignDir, relManifest, manifest);
+  validateManifestFiles(campaignDir, relManifest, manifest);
+
   // Inverse check: any landing.html / presell.html on disk should be in the manifest.
   for (const detector of PAGE_DETECTORS) {
     const onDisk = fs.existsSync(path.join(campaignDir, detector.filename));
@@ -185,6 +191,81 @@ function validateHandoffManifest(campaignDir) {
       warnings.push(`${relManifest}: ${detector.filename} exists on disk but is missing from manifest pages[]`);
     }
   }
+}
+
+function validateManifestProvenance(campaignDir, relManifest, manifest) {
+  const provenance = manifest.producer_provenance;
+  if (!provenance) return;
+
+  if (provenance.source_type !== 'semantic_figma_export') {
+    errors.push(`${relManifest}: producer_provenance.source_type must be "semantic_figma_export"`);
+  }
+  if (provenance.screenshot_fallback_used !== false) {
+    errors.push(`${relManifest}: producer_provenance.screenshot_fallback_used must be false`);
+  }
+  if (!/^[0-9a-f]{64}$/.test(String(provenance.material_fingerprint || ''))) {
+    errors.push(`${relManifest}: producer_provenance.material_fingerprint must be a sha256 hex string`);
+  }
+  if (provenance.export_log) {
+    const exportLogPath = path.join(campaignDir, provenance.export_log);
+    if (!fs.existsSync(exportLogPath)) {
+      errors.push(`${relManifest}: producer_provenance.export_log "${provenance.export_log}" does not exist`);
+    }
+  }
+  if (Array.isArray(provenance.section_exports)) {
+    for (const section of provenance.section_exports) {
+      if (!section || typeof section !== 'object') {
+        errors.push(`${relManifest}: producer_provenance.section_exports contains a non-object entry`);
+        continue;
+      }
+      if (!section.section || !section.type) {
+        errors.push(`${relManifest}: section_exports[] entry missing section or type`);
+      }
+      if (!section.node_ids || !Object.keys(section.node_ids).length) {
+        warnings.push(`${relManifest}: section export "${section.section || '(unknown)'}" has no node_ids`);
+      }
+    }
+  }
+}
+
+function validateManifestFiles(campaignDir, relManifest, manifest) {
+  if (!Array.isArray(manifest.files)) return;
+
+  const hash = crypto.createHash('sha256');
+  for (const entry of manifest.files) {
+    if (!entry || typeof entry !== 'object') {
+      errors.push(`${relManifest}: files[] contains a non-object entry`);
+      continue;
+    }
+    if (!entry.path || !entry.sha256) {
+      errors.push(`${relManifest}: files[] entry missing path or sha256`);
+      continue;
+    }
+    if (!/^[0-9a-f]{64}$/.test(String(entry.sha256))) {
+      errors.push(`${relManifest}: files[] entry "${entry.path}" has invalid sha256`);
+      continue;
+    }
+    const targetPath = path.join(campaignDir, entry.path);
+    if (!fs.existsSync(targetPath)) {
+      errors.push(`${relManifest}: files[] entry "${entry.path}" does not exist`);
+      continue;
+    }
+    const actual = sha256File(targetPath);
+    if (actual !== entry.sha256) {
+      errors.push(`${relManifest}: files[] entry "${entry.path}" hash mismatch`);
+      continue;
+    }
+    hash.update(`${entry.sha256}  ${entry.path}\n`);
+  }
+
+  const fingerprint = manifest.producer_provenance && manifest.producer_provenance.material_fingerprint;
+  if (fingerprint && manifest.files.length && hash.digest('hex') !== fingerprint) {
+    errors.push(`${relManifest}: producer_provenance.material_fingerprint does not match files[] inventory`);
+  }
+}
+
+function sha256File(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
 function validateEntryUrl(campaignDir) {

@@ -37,6 +37,7 @@ const { extractAccordionItems } = require('./lib/accordion-extract');
 
 const ROOT = path.resolve(__dirname, '..');
 const BREAKPOINTS = ['desktop', 'tablet', 'mobile'];
+const EXPORT_LOG_REL = path.join('.campaigns-os', 'source-export-log.json');
 
 main().catch((error) => {
   console.error(`Error: ${error.message}`);
@@ -80,7 +81,21 @@ async function main() {
   }
 
   const type = resolveType(opts.type, section);
-  const summary = { section, slug, type, fileKey, images: [], hotspots: {}, frontmatter: {}, warnings: [], annotations: annotations.length };
+  const summary = {
+    section,
+    slug,
+    type,
+    fileKey,
+    nodeIds,
+    nodeInputs,
+    command: redactCommand(process.argv.slice(2)),
+    images: [],
+    hotspots: {},
+    frontmatter: {},
+    warnings: [],
+    annotations: annotations.length,
+    screenshot_fallback_used: false,
+  };
 
   let html;
   if (type === 'accordion') {
@@ -106,6 +121,7 @@ async function main() {
     console.log(html);
   }
 
+  appendExportLog({ slug, summary, opts });
   printSummary(section, summary);
 }
 
@@ -279,6 +295,59 @@ function requireOpt(opts, key) {
 
 function relative(p) {
   return path.relative(ROOT, p) || p;
+}
+
+function appendExportLog({ slug, summary, opts }) {
+  const campaignDir = path.join(ROOT, 'src', slug);
+  const logPath = path.join(campaignDir, EXPORT_LOG_REL);
+  const entry = {
+    exported_at: new Date().toISOString(),
+    generator: 'figma-sections-export',
+    source_type: 'semantic_figma_export',
+    screenshot_fallback_used: false,
+    section: summary.section,
+    type: summary.type,
+    file_key: summary.fileKey || null,
+    node_ids: summary.nodeIds,
+    node_inputs: summary.nodeInputs,
+    command: summary.command,
+    partial: summary.partial || null,
+    images: summary.images,
+    hotspots: summary.hotspots,
+    annotations: summary.annotations,
+    warnings: summary.warnings,
+    dry_run: opts['dry-run'] === true,
+    button_name: opts['button-name'] || null,
+  };
+
+  let log = { schema_version: 'figma-sections-export-log/v0', entries: [] };
+  if (fs.existsSync(logPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(logPath, 'utf8'));
+      if (parsed && Array.isArray(parsed.entries)) log = parsed;
+    } catch {
+      log = { schema_version: 'figma-sections-export-log/v0', entries: [] };
+    }
+  }
+
+  log.entries = log.entries.filter((item) => item.section !== entry.section);
+  log.entries.push(entry);
+  log.entries.sort((a, b) => String(a.section).localeCompare(String(b.section)));
+  fs.mkdirSync(path.dirname(logPath), { recursive: true });
+  fs.writeFileSync(logPath, JSON.stringify(log, null, 2) + '\n');
+}
+
+function redactCommand(argv) {
+  const redacted = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    redacted.push(arg);
+    if (/^(--?(?:figma-)?access-token|--token)$/i.test(arg) && argv[index + 1]) {
+      redacted.push('[redacted]');
+      index += 1;
+    }
+  }
+  return `npm run extract -- ${redacted.join(' ')}`;
 }
 
 function printSummary(section, summary) {
