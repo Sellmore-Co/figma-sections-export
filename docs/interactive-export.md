@@ -1,21 +1,25 @@
 # Interactive section export (REST)
 
-Landing sections used to export as a flat responsive image wrapped in a
-whole-section link. That made the whole section clickable, turned FAQ blocks
-into static pictures, and dropped any copy authored in Figma. `export-section.js`
-replaces that with two interactive, faithful output shapes — and reaches Figma
-over the **REST API**, so an export no longer depends on the MCP plugin staying
-connected mid-run.
+`export-section.js` is the REST fallback for narrow interactive helpers. It
+reaches Figma over the **REST API**, so FAQ extraction or explicit image-only
+promo-strip exports do not depend on the MCP plugin staying connected mid-run.
+
+Regular landing sections should still use the semantic section export workflow
+documented in `AGENTS.md` / `CLAUDE.md`: copy lives in frontmatter, layout is
+HTML/Liquid, assets are exported separately, and shared section behavior comes
+from `assets/js/landing.js`.
 
 ## What it produces
 
 | Section type | Output |
 | ------------ | ------ |
-| `hotspot` (default) | Responsive `<picture>` + a transparent `<a>` positioned over **only the CTA button**, one hotspot per breakpoint. |
-| `accordion` (FAQ) | A native `<details>`/`<summary>` accordion built from the Q&A content — no JavaScript. |
+| `accordion` (FAQ default) | Shared `data-accordion` markup built from the Q&A content and driven by `assets/js/landing.js`. |
+| `hotspot` (explicit only) | Responsive `<picture>` + a transparent `<a>` positioned over **only the CTA button**, one hotspot per breakpoint. Use only for image-only promo strips where baked text is acceptable. |
 
-Type is inferred from the section name (`faq*` / `accordion*` → accordion);
-override with `--type hotspot|accordion`.
+Type is inferred from the section name for FAQ/accordion sections only
+(`faq*` / `accordion*` → accordion). For regular sections, `auto` refuses to
+emit image slices; use the semantic export workflow, or pass `--type hotspot`
+explicitly for an image-only escape hatch.
 
 ## Usage
 
@@ -69,9 +73,11 @@ Override matching with `--button-name` when the layer is named unusually.
 
 ## Accordions
 
-FAQ/accordion sections export as native `<details>` rows. The extractor finds
-the accordion list (the container whose children are repeated text rows), takes
-the first text node in each row as the question and the rest as the answer, and
+FAQ/accordion sections export as shared landing accordion markup:
+`data-accordion`, `data-accordion-item`, `data-accordion-toggle`,
+`data-accordion-panel`, and `data-accordion-icon`. The extractor finds the
+accordion list (the container whose children are repeated text rows), takes the
+first text node in each row as the question and the rest as the answer, and
 falls back to a Dev Mode annotation for the answer when there is no visible
 answer layer (see [figma-annotations.md](figma-annotations.md)). Questions and
 answers are emitted as namespaced Liquid variables (`faq_1_q_1`, `faq_1_a_1`, …)
@@ -89,13 +95,14 @@ client for:
 It retries on `429`/`5xx` and follows redirects on downloads. Because it does
 not depend on MCP, an export can complete even if the MCP plugin disconnects.
 The existing `save-ref.sh` / `export-node.sh` shells still cover reference
-screenshots and single-asset renders; this client adds the structured node read
-and the hotspot/accordion pipeline on top.
+screenshots and single-asset renders; this client adds structured node reads for
+the accordion helper and explicit hotspot escape hatch.
 
 ## Output contract
 
 - Partial: `src/<slug>/_includes/landing/<section>.html`
-- Image slices: `src/<slug>/assets/images/<section>/<section>-<breakpoint>.png`
+- Hotspot image slices, only when `--type hotspot` is explicit:
+  `src/<slug>/assets/images/<section>/<section>-<breakpoint>.png`
 - Asset and link references use the kit filters `campaign_asset` / `campaign_link`.
 - Copy lives in `landing.html` frontmatter (printed by the command), namespaced
   by section.

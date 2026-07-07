@@ -141,7 +141,7 @@ npm run dev
 | `npm run compress -- <slug>` | Compress final handoff assets under `src/<slug>/assets/images/` only; does not touch `_ref/` screenshots or other campaigns |
 | `npm run infer -- <figma-url>` | Read a Figma frame name and infer the export section name, e.g. `problemsolution2-desktop` → `problemsolution-2` |
 | `npm run intake -- "<message>"` | Preflight pasted Figma links and tell the agent whether it must ask for slug/type before fetching |
-| `npm run extract -- --slug <slug> --section <name> --desktop <url> [--tablet <url>] [--mobile <url>]` | REST-based interactive export: responsive `<picture>` + per-breakpoint CTA hotspots, or a native `<details>` accordion for FAQ sections (see [docs/interactive-export.md](docs/interactive-export.md)) |
+| `npm run extract -- --slug <slug> --section <name> --desktop <url> [--tablet <url>] [--mobile <url>]` | REST-based helper for FAQ accordions and explicit image-only hotspot escape hatches (see [docs/interactive-export.md](docs/interactive-export.md)) |
 | `npm run annotations -- <figma-url>` | Probe whether Dev Mode annotations / comments are reachable for the current token (see [docs/figma-annotations.md](docs/figma-annotations.md)) |
 | `npm test` | Run the offline unit + integration tests for the extraction tooling |
 
@@ -149,10 +149,10 @@ npm run dev
 
 ## Interactive section export (REST)
 
-`npm run extract` reads a section over the Figma **REST API** (a fallback for the MCP plugin, which can disconnect mid-run) and emits interactive output instead of a flat image wrapped in a whole-section link:
+`npm run extract` reads a section over the Figma **REST API** (a fallback for the MCP plugin, which can disconnect mid-run) for narrow interactive helpers. It is not the default semantic section exporter for regular landing sections.
 
-- **Hotspots** — a responsive `<picture>` plus a transparent `<a>` positioned over **only the CTA button**, one per breakpoint, shown via the same `md:`/`lg:` breakpoints the `<picture>` sources use.
-- **Accordions** — FAQ sections export as a native `<details>` accordion built from the Q&A content (no JavaScript).
+- **Accordions** — FAQ sections export as shared `data-accordion` markup driven by `assets/js/landing.js`, with Q&A content in frontmatter.
+- **Hotspots** — explicit `--type hotspot` only. Use this for image-only promo strips where baked text is acceptable; do not use it for normal semantic sections.
 
 See [docs/interactive-export.md](docs/interactive-export.md) for the full workflow and [docs/figma-annotations.md](docs/figma-annotations.md) for the Dev Mode annotation finding.
 

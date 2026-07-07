@@ -2,11 +2,11 @@
 // export-section.js — token-based REST extraction for interactive sections.
 //
 // This is the reliability fallback for the Figma MCP plugin (which can
-// disconnect mid-run) and the source of the two interactive output shapes:
+// disconnect mid-run) and the source of two explicit interactive helpers:
 //
-//   • hotspot  — responsive <picture> + a transparent <a> over ONLY the CTA
-//                button, one per breakpoint (no more whole-section links).
-//   • accordion — a native <details> accordion built from FAQ Q&A content.
+//   • hotspot   — opt-in image-only escape hatch: responsive <picture> + a
+//                 transparent <a> over ONLY the CTA button, one per breakpoint.
+//   • accordion — shared landing.js data-accordion markup built from FAQ Q&A.
 //
 // Usage:
 //   node scripts/export-section.js --slug <slug> --section <name> \
@@ -81,13 +81,14 @@ async function main() {
   const presentBps = BREAKPOINTS.filter((bp) => docs[bp]);
   if (!presentBps.length) throw new Error('No node documents resolved for any breakpoint.');
 
+  const type = resolveType(opts.type, section);
+
   // Annotations (issue #27 ask 3) — collected across all breakpoints.
   const annotations = presentBps.flatMap((bp) => tree.collectAnnotations(docs[bp]));
   if (annotations.length) {
     console.log(`[export-section] captured ${annotations.length} Dev Mode annotation(s)`);
   }
 
-  const type = resolveType(opts.type, section);
   const summary = {
     section,
     slug,
@@ -250,9 +251,19 @@ function findHeading(doc, items) {
 // --- helpers ----------------------------------------------------------------
 
 function resolveType(explicit, section) {
-  if (explicit && explicit !== 'auto') return explicit;
+  if (explicit && explicit !== 'auto') {
+    if (!['hotspot', 'accordion'].includes(explicit)) {
+      throw new Error(`Unsupported --type "${explicit}". Use auto, accordion, or hotspot.`);
+    }
+    return explicit;
+  }
   const category = section.split('-')[0];
-  return /^(faq|accordion)$/.test(category) ? 'accordion' : 'hotspot';
+  if (/^(faq|accordion)$/.test(category)) return 'accordion';
+  throw new Error(
+    `--type auto no longer emits hotspot image slices for "${section}". ` +
+    'Use the semantic section export workflow for regular landing sections, ' +
+    'or pass --type hotspot explicitly for an image-only promo strip.',
+  );
 }
 
 function normalizeSection(name) {
@@ -302,7 +313,7 @@ function appendExportLog({ slug, summary, opts }) {
   const entry = {
     exported_at: new Date().toISOString(),
     generator: 'figma-sections-export',
-    source_type: 'semantic_figma_export',
+    source_type: summary.type === 'hotspot' ? 'figma_hotspot_image_slice' : 'semantic_figma_export',
     screenshot_fallback_used: false,
     section: summary.section,
     type: summary.type,
@@ -379,7 +390,7 @@ Usage:
 
 Options:
   --file-key KEY        Figma file key (inferred from URLs or FIGMA_FILE_KEY)
-  --type TYPE           auto | hotspot | accordion   (default: auto from name)
+  --type TYPE           auto | hotspot | accordion   (auto only infers FAQ/accordion)
   --scale N             render scale for image slices (default: 2)
   --button-name STR     override CTA button layer match (substring)
   --href "<liquid>"     CTA href Liquid expression (default: <prefix>_cta_url | campaign_link)

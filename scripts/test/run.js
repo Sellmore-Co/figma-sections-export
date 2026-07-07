@@ -143,11 +143,14 @@ test('extractAccordionItems falls back to annotations for missing answers', () =
   assert.strictEqual(items[0].answer, 'Answer one lives in an annotation.');
   assert.ok(['annotations', 'mixed', 'questions-only'].includes(source));
 });
-test('renderAccordionSection emits <details> + namespaced frontmatter', () => {
+test('renderAccordionSection emits shared data-accordion markup + namespaced frontmatter', () => {
   const { items } = extractAccordionItems(faq.desktop, []);
   const { html, frontmatter } = renderAccordionSection({ sectionId: 'faq-1', items, headingText: 'FAQ' });
-  assert.match(html, /<details/);
-  assert.match(html, /<summary/);
+  assert.match(html, /data-accordion/);
+  assert.match(html, /data-accordion-item/);
+  assert.match(html, /data-accordion-toggle/);
+  assert.match(html, /data-accordion-panel/);
+  assert.doesNotMatch(html, /<details/);
   assert.match(html, /\{\{ faq_1_q_1 \}\}/);
   assert.match(html, /\{\{ faq_1_a_1 \}\}/);
   assert.strictEqual(frontmatter.faq_1_q_1, 'How soon will I see results?');
@@ -174,6 +177,7 @@ test('export-section.js --nodes-json --dry-run writes a hotspot partial', () => 
       '--desktop', '143:1000',
       '--tablet', '143:1100',
       '--mobile', '143:1200',
+      '--type', 'hotspot',
       '--nodes-json', path.join(FIXTURES, 'hero-nodes.json'),
       '--dry-run',
       '--force',
@@ -187,6 +191,32 @@ test('export-section.js --nodes-json --dry-run writes a hotspot partial', () => 
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     fs.rmSync(testSlugDir, { recursive: true, force: true });
+  }
+});
+test('export-section.js does not infer hotspot for regular sections', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fse-test-'));
+  const outFile = path.join(tmpDir, 'hero-1.html');
+  try {
+    let error = null;
+    try {
+      execFileSync('node', [
+        path.join(__dirname, '..', 'export-section.js'),
+        '--slug', '__test__',
+        '--section', 'hero-1',
+        '--desktop', '143:1000',
+        '--nodes-json', path.join(FIXTURES, 'hero-nodes.json'),
+        '--dry-run',
+        '--force',
+        '--out', outFile,
+      ], { stdio: 'pipe', encoding: 'utf8' });
+    } catch (caught) {
+      error = caught;
+    }
+    assert.ok(error, 'expected regular sections to require semantic workflow or explicit --type hotspot');
+    assert.match(error.stderr, /auto no longer emits hotspot image slices/);
+    assert.ok(!fs.existsSync(outFile));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 test('export-section.js infers accordion from faq section name', () => {
@@ -204,7 +234,8 @@ test('export-section.js infers accordion from faq section name', () => {
       '--out', outFile,
     ], { stdio: 'pipe' });
     const html = fs.readFileSync(outFile, 'utf8');
-    assert.match(html, /<details/);
+    assert.match(html, /data-accordion/);
+    assert.doesNotMatch(html, /<details/);
     assert.match(html, /\{\{ faq_1_q_1 \}\}/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -225,6 +256,7 @@ test('export-section.js fails before mutating when the partial exists without --
         '--slug', '__test__',
         '--section', 'hero-1',
         '--desktop', '143:1000',
+        '--type', 'hotspot',
         '--nodes-json', path.join(FIXTURES, 'hero-nodes.json'),
         '--dry-run',
         '--out', outFile,
@@ -258,7 +290,14 @@ test('validate-export rejects Figma provenance without semantic materials', () =
         semantic_section_count: 0,
         breakpoint_image_count: 0,
         material_fingerprint: 'a'.repeat(64),
-        section_exports: [],
+        section_exports: [
+          {
+            section: 'hero-1',
+            type: 'hotspot',
+            source_type: 'figma_hotspot_image_slice',
+            node_ids: { desktop: '1:2' },
+          },
+        ],
       },
       pages: [{ page_id: 'landing', path: 'landing.html', page_type: 'landing' }],
       files: [],
@@ -277,6 +316,7 @@ test('validate-export rejects Figma provenance without semantic materials', () =
     assert.ok(error, 'expected validate-export.js to reject invalid provenance');
     assert.match(error.stdout, /semantic_section_count/);
     assert.match(error.stdout, /files\[\] must include at least one section partial/);
+    assert.match(error.stdout, /hotspot image-slice output/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

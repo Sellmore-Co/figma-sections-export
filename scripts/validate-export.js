@@ -199,7 +199,7 @@ function validateManifestProvenance(campaignDir, relManifest, manifest) {
   const manifestFiles = Array.isArray(manifest.files) ? manifest.files : [];
 
   if (provenance.source_type !== 'semantic_figma_export') {
-    errors.push(`${relManifest}: producer_provenance.source_type must be "semantic_figma_export"`);
+    errors.push(`${relManifest}: producer_provenance.source_type must be "semantic_figma_export" for Campaigns OS semantic handoff`);
   }
   if (provenance.screenshot_fallback_used !== false) {
     errors.push(`${relManifest}: producer_provenance.screenshot_fallback_used must be false`);
@@ -233,6 +233,9 @@ function validateManifestProvenance(campaignDir, relManifest, manifest) {
       }
       if (!section.section || !section.type) {
         errors.push(`${relManifest}: section_exports[] entry missing section or type`);
+      }
+      if (section.type === 'hotspot' || section.source_type === 'figma_hotspot_image_slice') {
+        errors.push(`${relManifest}: section export "${section.section || '(unknown)'}" is hotspot image-slice output, not semantic handoff material`);
       }
       if (!section.node_ids || !Object.keys(section.node_ids).length) {
         warnings.push(`${relManifest}: section export "${section.section || '(unknown)'}" has no node_ids`);

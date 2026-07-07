@@ -192,10 +192,12 @@ function readExportLog(campaignDir) {
 
 function buildProducerProvenance({ campaignDir, generatorRoot, files, exportLog }) {
   const entries = Array.isArray(exportLog?.entries) ? exportLog.entries : [];
+  const hasHotspotEntries = entries.some((entry) => entry && entry.type === 'hotspot');
   const fileKeys = unique(entries.map((entry) => entry.file_key).filter(Boolean));
   const sectionExports = entries.map((entry) => ({
     section: entry.section,
     type: entry.type,
+    source_type: entry.source_type || (entry.type === 'hotspot' ? 'figma_hotspot_image_slice' : 'semantic_figma_export'),
     file_key: entry.file_key || null,
     node_ids: entry.node_ids || {},
     partial: entry.partial || null,
@@ -210,7 +212,7 @@ function buildProducerProvenance({ campaignDir, generatorRoot, files, exportLog 
   for (const file of files) packageHash.update(`${file.sha256}  ${file.path}\n`);
 
   return {
-    source_type: 'semantic_figma_export',
+    source_type: hasHotspotEntries ? 'mixed_figma_export' : 'semantic_figma_export',
     screenshot_fallback_used: false,
     generator_repo: path.basename(generatorRoot),
     generator_version: readPackageVersion(generatorRoot),
