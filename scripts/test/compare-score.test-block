@@ -2,9 +2,10 @@ const fs = require('fs');
 const path = require('path');
 
 const { parseArgs } = require('../compare-score');
+const { deriveCalibrationBreakpoint, parseArgs: parseCalibrationArgs } = require('../compare-calibrate');
 const { resolveSectionCapture, resolveSectionIndex } = require('../lib/compare-shared');
-const { evaluateThreshold, resolveThresholds, scorePair } = require('../lib/score');
-const { appendEntry, inspectLoop, resetLedger } = require('../lib/loop-ledger');
+const { CorruptCalibrationError, evaluateThreshold, flagSsimAnomalies, resolveThresholds, scorePair, validateCalibration } = require('../lib/score');
+const { CorruptStateError, acquireLock, appendEntry, assertLoopIdentity, inspectLoop, readLedger, releaseLock, resetLedger, validateLedger, writeLedger } = require('../lib/loop-ledger');
 
 module.exports = ({ assert, fixtures, test }) => {
   const reference = path.join(fixtures, 'score-reference.png');
@@ -15,6 +16,14 @@ module.exports = ({ assert, fixtures, test }) => {
   const sectionCaptureSrc = path.join(sectionCaptureRoot, 'src', 'fake');
   const sectionCapturePage = path.join(sectionCaptureSrc, 'landing.html');
   const sectionCaptureIncludes = path.join(sectionCaptureSrc, '_includes');
+  const hashes = { desktop: 'a'.repeat(64), tablet: 'b'.repeat(64), mobile: 'c'.repeat(64) };
+  const thresholds = { desktop: 0.01, tablet: 0.01, mobile: 0.01 };
+  const identity = {
+    section: 'hero-1', captureScope: { mode: 'section-index', sectionIndex: 0 }, refHashes: hashes,
+    thresholdConfig: { source: 'calibration', thresholds },
+  };
+  const limits = { maxIterations: 5, minDelta: 0.005 };
+  const entry = (scores, pass = false) => ({ timestamp: '2026-01-01T00:00:00.000Z', scores, pass, ssimAnomalies: [] });
 
   console.log('compare score');
   test('identical PNGs score zero', async () => {
@@ -54,6 +63,17 @@ module.exports = ({ assert, fixtures, test }) => {
     assert.strictEqual(evaluateThreshold([identicalResult], null), null);
   });
 
+  test('score and calibration argument clamps reject unsafe values', () => {
+    assert.match(parseArgs(['campaign', '--threshold', '0.2501']).error, /0 to 0.25/);
+    assert.match(parseArgs(['campaign', '--loop', '--max-iterations', '26']).error, /1 to 25/);
+    assert.match(parseArgs(['campaign', '--loop', '--min-delta', '0']).error, /cannot be disabled/);
+    assert.strictEqual(parseArgs(['campaign', '--loop', '--min-delta', '0.005']).error, undefined);
+    assert.match(parseCalibrationArgs(['campaign', '--samples', '2']).error, /at least 3/);
+    assert.match(parseCalibrationArgs(['campaign', '--multiplier', '0']).error, /1 to 10/);
+    assert.match(parseCalibrationArgs(['campaign', '--multiplier', '11']).error, /1 to 10/);
+    assert.match(parseCalibrationArgs(['campaign', '--minimum-floor', '0.051']).error, /0 to 0.05/);
+  });
+
   test('dimension gate fails independently of the optional threshold', async () => {
     const mismatchResult = await scorePair(reference, dimensionMismatch);
     assert.strictEqual(evaluateThreshold([mismatchResult], null), false);
@@ -79,37 +99,97 @@ module.exports = ({ assert, fixtures, test }) => {
     assert.strictEqual(evaluateThreshold(scores, { desktop: 0.01, mobile: 0.02 }), true);
   });
 
+  test('passing low-SSIM breakpoints are flagged without becoming a gate', () => {
+    const results = {
+      desktop: { score: 0.005, dimensionsMatch: true, ssim: 0.94 },
+      tablet: { score: 0.005, dimensionsMatch: true, ssim: 0.96 },
+    };
+    assert.deepStrictEqual(flagSsimAnomalies(results, { desktop: 0.01, tablet: 0.01 }), ['desktop']);
+    assert.strictEqual(results.desktop.ssimAnomaly, true);
+    assert.strictEqual(evaluateThreshold(results, { desktop: 0.01, tablet: 0.01 }), true);
+  });
+
+  test('calibration uses all first-to-sample scores, their max, and refuses instability', () => {
+    assert.deepStrictEqual(deriveCalibrationBreakpoint([0.01, 0.03], { multiplier: 3, minimumFloor: 0.002, samples: 3 }), {
+      noiseFloor: 0.03, threshold: 0.09, samples: 3, sampleScores: [0.01, 0.03],
+    });
+    assert.throws(() => deriveCalibrationBreakpoint([0.01, 0.051], { multiplier: 3, minimumFloor: 0.002, samples: 3 }), /environment unstable/);
+    assert.throws(() => deriveCalibrationBreakpoint([0.05, 0.04], { multiplier: 6, minimumFloor: 0.002, samples: 3 }), /environment unstable/);
+  });
+
   test('loop hard-stops at max iterations and recorded max cannot be raised', () => {
     let ledger = null;
-    for (let i = 0; i < 3; i += 1) ledger = appendEntry(ledger, { scores: { desktop: 0.3 - i * 0.1 }, pass: false }, { maxIterations: 3, minDelta: 0 });
-    const refusal = inspectLoop(ledger, { maxIterations: 99, minDelta: 0 });
+    const localLimits = { maxIterations: 3, minDelta: 0.005 };
+    for (let i = 0; i < 3; i += 1) ledger = appendEntry(ledger, entry({ desktop: 0.3 - i * 0.1, tablet: 0.3 - i * 0.1, mobile: 0.3 - i * 0.1 }), localLimits, identity);
+    const refusal = inspectLoop(ledger, { maxIterations: 25, minDelta: 0.005 }, thresholds);
     assert.strictEqual(refusal.exitCode, 2);
     assert.match(refusal.stopReason, /max iterations \(3\)/);
   });
 
-  test('loop hard-stops on stagnation and worsening', () => {
-    const limits = { maxIterations: 5, minDelta: 0.05 };
-    let stagnant = appendEntry(null, { scores: { desktop: 0.2 }, pass: false }, limits);
-    stagnant = appendEntry(stagnant, { scores: { desktop: 0.195 }, pass: false }, limits);
-    assert.match(inspectLoop(stagnant, limits).stopReason, /score not improving/);
-    let worsening = appendEntry(null, { scores: { desktop: 0.2 }, pass: false }, limits);
-    worsening = appendEntry(worsening, { scores: { desktop: 0.25 }, pass: false }, limits);
-    assert.match(inspectLoop(worsening, limits).stopReason, /score not improving/);
+  test('same-run per-breakpoint stagnation requires improvement with no worsening', () => {
+    let ledger = appendEntry(null, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }), limits, identity);
+    ledger = appendEntry(ledger, entry({ desktop: 0.19, tablet: 0.206, mobile: 0.2 }), limits, identity);
+    assert.match(inspectLoop(ledger, limits, thresholds).stopReason, /real defect/);
+    let improving = appendEntry(null, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }), limits, identity);
+    improving = appendEntry(improving, entry({ desktop: 0.19, tablet: 0.199, mobile: 0.2 }), limits, identity);
+    assert.strictEqual(inspectLoop(improving, limits, thresholds).stopReason, null);
+    let near = appendEntry(null, entry({ desktop: 0.04, tablet: 0.04, mobile: 0.04 }), limits, identity);
+    near = appendEntry(near, entry({ desktop: 0.039, tablet: 0.039, mobile: 0.039 }), limits, identity);
+    assert.match(inspectLoop(near, limits, thresholds).stopReason, /noise floor/);
   });
 
-  test('pass starts the next loop fresh and reset is represented by an empty ledger', () => {
-    const limits = { maxIterations: 5, minDelta: 0.05 };
-    let ledger = appendEntry(null, { scores: { desktop: 0.2 }, pass: false }, limits);
-    ledger = appendEntry(ledger, { scores: { desktop: 0.001 }, pass: true }, limits);
-    ledger = appendEntry(ledger, { scores: { desktop: 0.3 }, pass: false }, limits);
-    assert.strictEqual(ledger.entries.length, 1);
-    assert.strictEqual(ledger.entries[0].iteration, 1);
-    assert.strictEqual(inspectLoop(null, limits).stopReason, null);
+  test('null pass stays null and stopped reset preserves an audit trace', () => {
+    let ledger = appendEntry(null, entry({ desktop: 0, tablet: 0, mobile: 0 }, null), limits, identity);
+    assert.strictEqual(ledger.entries[0].pass, null);
     const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'loop-ledger-'));
     const ledgerPath = path.join(tmpDir, 'loop.json');
-    fs.writeFileSync(ledgerPath, '{}');
-    resetLedger(ledgerPath);
+    ledger.stopReason = 'HARD STOP: test';
+    writeLedger(ledgerPath, ledger);
+    const resets = resetLedger(ledgerPath, ledger, '2026-01-02T00:00:00.000Z');
     assert.strictEqual(fs.existsSync(ledgerPath), false);
+    assert.deepStrictEqual(resets, [{ at: '2026-01-02T00:00:00.000Z', previousStopReason: 'HARD STOP: test', previousIterations: 1 }]);
+    const fresh = appendEntry(null, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }), limits, { ...identity, resets });
+    assert.deepStrictEqual(fresh.resets, resets);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('ledger identity binds thresholds, scope, section, and ref hashes', () => {
+    const ledger = appendEntry(null, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }), limits, identity);
+    assert.doesNotThrow(() => assertLoopIdentity(ledger, identity));
+    assert.throws(() => assertLoopIdentity(ledger, { ...identity, thresholdConfig: { source: 'flag', thresholds } }), /threshold changed mid-loop/);
+    assert.throws(() => assertLoopIdentity(ledger, { ...identity, captureScope: { mode: 'full-page' } }), /capture scope changed/);
+    assert.throws(() => assertLoopIdentity(ledger, { ...identity, refHashes: { ...hashes, mobile: 'd'.repeat(64) } }), /hashes changed/);
+  });
+
+  test('ledger and calibration schemas fail closed, including invalid JSON and empty scores', () => {
+    const ledger = appendEntry(null, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }), limits, identity);
+    assert.doesNotThrow(() => validateLedger(ledger));
+    assert.throws(() => validateLedger({ ...ledger, entries: [{ ...ledger.entries[0], scores: {} }] }), CorruptStateError);
+    assert.throws(() => validateLedger({ ...ledger, entries: [{ ...ledger.entries[0], iteration: 2 }] }), CorruptStateError);
+    const calibration = Object.fromEntries(['desktop', 'tablet', 'mobile'].map((name) => [name, { noiseFloor: 0.01, threshold: 0.03, samples: 3, sampleScores: [0.005, 0.01] }]));
+    Object.assign(calibration, { loopDefaults: limits, calibratedAt: '2026-01-01T00:00:00.000Z', captureScope: identity.captureScope, refHashes: hashes });
+    assert.doesNotThrow(() => validateCalibration(calibration));
+    assert.throws(() => validateCalibration({ ...calibration, desktop: { ...calibration.desktop, threshold: 0.251 } }), CorruptCalibrationError);
+    assert.throws(() => validateCalibration({ ...calibration, desktop: { ...calibration.desktop, noiseFloor: 0.051 } }), CorruptCalibrationError);
+    const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'corrupt-ledger-'));
+    const file = path.join(tmpDir, 'loop.json');
+    fs.writeFileSync(file, '{nope');
+    assert.throws(() => readLedger(file), CorruptStateError);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('lock rejects concurrency and steals locks older than ten minutes', () => {
+    const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'score-lock-'));
+    const lock = path.join(tmpDir, 'loop.lock');
+    acquireLock(lock);
+    assert.throws(() => acquireLock(lock), /another compare:score run holds the lock/);
+    const old = new Date(Date.now() - 11 * 60 * 1000);
+    fs.utimesSync(lock, old, old);
+    const warnings = [];
+    acquireLock(lock, Date.now(), (message) => warnings.push(message));
+    assert.match(warnings[0], /stealing stale/);
+    releaseLock(lock);
+    assert.strictEqual(fs.existsSync(lock), false);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 

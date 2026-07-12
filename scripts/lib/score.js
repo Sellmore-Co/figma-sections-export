@@ -8,6 +8,10 @@ const PIXELMATCH_THRESHOLD = 0.1;
 const REGION_ROWS = 12;
 const REGION_COLUMNS = 6;
 const DEFAULT_TOP_REGIONS = 8;
+const MAX_THRESHOLD = 0.25;
+const MAX_NOISE_FLOOR = 0.05;
+
+class CorruptCalibrationError extends Error {}
 
 let pixelmatchPromise;
 
@@ -194,6 +198,15 @@ function evaluateThreshold(scores, threshold) {
   });
 }
 
+function flagSsimAnomalies(results, thresholds) {
+  for (const [name, result] of Object.entries(results)) {
+    const threshold = thresholds?.[name];
+    result.ssimAnomaly = Number.isFinite(threshold) && result.dimensionsMatch
+      && result.score <= threshold && result.ssim < 0.95;
+  }
+  return Object.keys(results).filter((name) => results[name].ssimAnomaly);
+}
+
 function resolveThresholds(explicitThreshold, calibration, breakpointNames) {
   if (explicitThreshold !== null && explicitThreshold !== undefined) {
     return {
@@ -208,12 +221,39 @@ function resolveThresholds(explicitThreshold, calibration, breakpointNames) {
   return { thresholds: null, source: null };
 }
 
+function validateCalibration(calibration, breakpointNames = ['desktop', 'tablet', 'mobile']) {
+  try {
+    if (!calibration || typeof calibration !== 'object' || Array.isArray(calibration)) throw new Error();
+    for (const name of breakpointNames) {
+      const value = calibration[name];
+      if (!value || !Number.isFinite(value.noiseFloor) || value.noiseFloor < 0 || value.noiseFloor > MAX_NOISE_FLOOR
+        || !Number.isFinite(value.threshold) || value.threshold < 0 || value.threshold > MAX_THRESHOLD
+        || !Number.isInteger(value.samples) || value.samples < 3 || !Array.isArray(value.sampleScores)
+        || value.sampleScores.length !== value.samples - 1
+        || !value.sampleScores.every((score) => Number.isFinite(score) && score >= 0 && score <= 1)
+        || value.noiseFloor !== Math.max(0, ...value.sampleScores) || value.threshold < value.noiseFloor) throw new Error();
+    }
+    if (!calibration.loopDefaults || !Number.isInteger(calibration.loopDefaults.maxIterations)
+      || calibration.loopDefaults.maxIterations < 1 || calibration.loopDefaults.maxIterations > 25
+      || !Number.isFinite(calibration.loopDefaults.minDelta) || calibration.loopDefaults.minDelta < 0.005 || calibration.loopDefaults.minDelta > 1
+      || !calibration.refHashes || !breakpointNames.every((name) => /^[a-f0-9]{64}$/.test(calibration.refHashes[name] || ''))
+      || !calibration.captureScope || !['full-page-fallback', 'section-index'].includes(calibration.captureScope.mode)
+      || (calibration.captureScope.mode === 'section-index' && (!Number.isInteger(calibration.captureScope.sectionIndex) || calibration.captureScope.sectionIndex < 0))
+      || typeof calibration.calibratedAt !== 'string' || !Number.isFinite(Date.parse(calibration.calibratedAt))) throw new Error();
+    return calibration;
+  } catch (error) { throw new CorruptCalibrationError(); }
+}
+
 module.exports = {
   DEFAULT_TOP_REGIONS,
+  CorruptCalibrationError,
+  MAX_NOISE_FLOOR,
+  MAX_THRESHOLD,
   PIXELMATCH_THRESHOLD,
   REGION_COLUMNS,
   REGION_ROWS,
   evaluateThreshold,
+  flagSsimAnomalies,
   resolveThresholds,
   normalizePair,
   readDimensions,
@@ -221,4 +261,5 @@ module.exports = {
   scorePair,
   ssimScore,
   topMismatchRegions,
+  validateCalibration,
 };

@@ -2,12 +2,13 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { captureBreakpoints } = require('./lib/capture');
 const {
   BREAKPOINTS, PROJECT_ROOT, buildLiveUrl, parseComparisonPositionals,
   resolveReferenceSection, resolveSectionCapture,
 } = require('./lib/compare-shared');
-const { scorePair } = require('./lib/score');
+const { MAX_NOISE_FLOOR, MAX_THRESHOLD, scorePair } = require('./lib/score');
 const { DEFAULT_MAX_ITERATIONS, DEFAULT_MIN_DELTA } = require('./lib/loop-ledger');
 
 function usage(stream = console.error) {
@@ -29,10 +30,19 @@ function parseArgs(raw) {
     } else if (raw[i].startsWith('--')) return { error: `Unknown option: ${raw[i]}` };
     else positional.push(raw[i]);
   }
-  if (!Number.isInteger(values.samples) || values.samples < 2) return { error: '--samples must be an integer of at least 2.' };
-  if (!Number.isFinite(values.multiplier) || values.multiplier < 0) return { error: '--multiplier must be a non-negative number.' };
-  if (!Number.isFinite(values.minimumFloor) || values.minimumFloor < 0 || values.minimumFloor > 1) return { error: '--minimum-floor must be a ratio from 0 to 1.' };
+  if (!Number.isInteger(values.samples) || values.samples < 3) return { error: '--samples must be an integer of at least 3.' };
+  if (!Number.isFinite(values.multiplier) || values.multiplier < 1 || values.multiplier > 10) return { error: '--multiplier must be from 1 to 10.' };
+  if (!Number.isFinite(values.minimumFloor) || values.minimumFloor < 0 || values.minimumFloor > MAX_NOISE_FLOOR) return { error: '--minimum-floor must be a ratio from 0 to 0.05.' };
   return { ...parseComparisonPositionals(positional), ...values };
+}
+
+function deriveCalibrationBreakpoint(scores, args) {
+  const noiseFloor = Math.max(0, ...scores);
+  const threshold = Math.max(noiseFloor * args.multiplier, args.minimumFloor);
+  if (noiseFloor > MAX_NOISE_FLOOR || threshold > MAX_THRESHOLD) {
+    throw new Error('environment unstable — fix the capture environment, do not raise the bar');
+  }
+  return { noiseFloor, threshold, samples: args.samples, sampleScores: scores };
 }
 
 async function main() {
@@ -55,6 +65,7 @@ async function main() {
   if (scope.warning) console.warn(scope.warning);
   const liveUrl = buildLiveUrl(args.port, args.slug, scope.entryUrl);
   const captureDir = path.join(refDir, 'capture');
+  fs.mkdirSync(captureDir, { recursive: true });
   const captures = [];
   for (let sample = 1; sample <= args.samples; sample += 1) {
     captures.push(await captureBreakpoints({
@@ -68,11 +79,16 @@ async function main() {
     for (let sample = 1; sample < captures.length; sample += 1) {
       scores.push((await scorePair(captures[0][bp.name], captures[sample][bp.name])).score);
     }
-    const noiseFloor = Math.max(0, ...scores);
-    calibration[bp.name] = { noiseFloor, threshold: Math.max(noiseFloor * args.multiplier, args.minimumFloor), samples: args.samples };
+    calibration[bp.name] = deriveCalibrationBreakpoint(scores, args);
   }
   calibration.loopDefaults = { maxIterations: DEFAULT_MAX_ITERATIONS, minDelta: DEFAULT_MIN_DELTA };
   calibration.calibratedAt = new Date().toISOString();
+  calibration.captureScope = { mode: scope.sectionIndex === null ? 'full-page-fallback' : 'section-index', ...(scope.sectionIndex === null ? {} : { sectionIndex: scope.sectionIndex }) };
+  calibration.refHashes = Object.fromEntries(BREAKPOINTS.map((bp) => {
+    const ref = path.join(refDir, `${section}-${bp.name}.png`);
+    if (!fs.existsSync(ref)) throw new Error(`Missing Figma ref: ${path.relative(PROJECT_ROOT, ref)}`);
+    return [bp.name, crypto.createHash('sha256').update(fs.readFileSync(ref)).digest('hex')];
+  }));
   const output = path.join(captureDir, `${section}-calibration.json`);
   fs.writeFileSync(output, `${JSON.stringify(calibration, null, 2)}\n`);
   console.log('\nBreakpoint  Noise floor  Threshold   Samples');
@@ -82,4 +98,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((error) => { console.error(error.message); process.exit(1); });
-module.exports = { main, parseArgs };
+module.exports = { deriveCalibrationBreakpoint, main, parseArgs };

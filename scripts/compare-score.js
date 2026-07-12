@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { captureBreakpoints } = require('./lib/capture');
 const {
   BREAKPOINTS,
@@ -12,8 +13,8 @@ const {
   resolveSectionCapture,
   resolveSectionPage,
 } = require('./lib/compare-shared');
-const { PIXELMATCH_THRESHOLD, evaluateThreshold, resolveThresholds, scorePair } = require('./lib/score');
-const { DEFAULT_MAX_ITERATIONS, DEFAULT_MIN_DELTA, appendEntry, inspectLoop, readLedger, resetLedger, writeLedger } = require('./lib/loop-ledger');
+const { CorruptCalibrationError, PIXELMATCH_THRESHOLD, evaluateThreshold, flagSsimAnomalies, resolveThresholds, scorePair, validateCalibration } = require('./lib/score');
+const { CorruptStateError, DEFAULT_MAX_ITERATIONS, DEFAULT_MIN_DELTA, MAX_ITERATIONS, MIN_LOOP_DELTA, acquireLock, appendEntry, assertLoopIdentity, initializeLedger, inspectLoop, readLedger, releaseLock, resetLedger, writeLedger } = require('./lib/loop-ledger');
 
 function printUsage(stream = console.error) {
   stream('Usage: npm run compare:score <slug> [section] [port] [--threshold <ratio>] [--selector <css> | --full-page]');
@@ -22,6 +23,8 @@ function printUsage(stream = console.error) {
   stream('By default, a known landing section is captured by its source-resolved top-level <section> index.');
   stream('  --selector <css>  Capture the first element matching an explicit CSS selector.');
   stream('  --full-page       Capture the full configured entry page (disables section scoping).');
+  stream('Known limitation: pixelmatch@0.1 can miss color-only differences; any passing breakpoint with SSIM < 0.95 is flagged for manual review.');
+  stream('Figma refs and the loop ledger are audit-trusted artifacts; PR review is the enforcement gate for changes to them.');
   stream('Examples:');
   stream('  npm run compare:score hero-1');
   stream('  npm run compare:score hero-1 3001');
@@ -76,14 +79,15 @@ function parseArgs(rawArgs) {
     }
   }
 
-  if (threshold !== null && (!Number.isFinite(threshold) || threshold < 0 || threshold > 1)) {
-    return { error: 'Threshold must be a finite mismatch ratio from 0 to 1.' };
+  if (threshold !== null && (!Number.isFinite(threshold) || threshold < 0 || threshold > 0.25)) {
+    return { error: 'Threshold must be a finite mismatch ratio from 0 to 0.25.' };
   }
   if (selector && fullPage) {
     return { error: '--selector and --full-page cannot be used together.' };
   }
-  if (maxIterations !== null && (!Number.isInteger(maxIterations) || maxIterations < 1)) return { error: '--max-iterations must be a positive integer.' };
+  if (maxIterations !== null && (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > MAX_ITERATIONS)) return { error: '--max-iterations must be an integer from 1 to 25.' };
   if (minDelta !== null && (!Number.isFinite(minDelta) || minDelta < 0 || minDelta > 1)) return { error: '--min-delta must be a ratio from 0 to 1.' };
+  if (loop && minDelta !== null && minDelta < MIN_LOOP_DELTA) return { error: '--min-delta must be at least 0.005 in loop mode; the stagnation stop cannot be disabled.' };
 
   return {
     ...parseComparisonPositionals(positional),
@@ -182,36 +186,26 @@ async function main() {
 
   const captureDir = path.join(refDir, 'capture');
   fs.mkdirSync(captureDir, { recursive: true });
+  const ledgerPath = path.join(captureDir, `${section}-loop.json`);
+  const reportPath = path.join(captureDir, `${section}-score.json`);
+  const lockPath = `${ledgerPath}.lock`;
+  acquireLock(lockPath);
+  try {
   const calibrationPath = path.join(captureDir, `${section}-calibration.json`);
-  const calibration = fs.existsSync(calibrationPath)
-    ? JSON.parse(fs.readFileSync(calibrationPath, 'utf8'))
-    : null;
+  let calibration = null;
+  if (fs.existsSync(calibrationPath)) {
+    try { calibration = validateCalibration(JSON.parse(fs.readFileSync(calibrationPath, 'utf8'))); }
+    catch (error) { throw new CorruptCalibrationError(); }
+  }
   const thresholdResolution = resolveThresholds(
     args.threshold,
     calibration,
     BREAKPOINTS.map((breakpoint) => breakpoint.name),
   );
-  const ledgerPath = path.join(captureDir, `${section}-loop.json`);
-  const reportPath = path.join(captureDir, `${section}-score.json`);
-  if (args.resetLoop) resetLedger(ledgerPath);
   const configuredLimits = {
     maxIterations: args.maxIterations ?? calibration?.loopDefaults?.maxIterations ?? DEFAULT_MAX_ITERATIONS,
     minDelta: args.minDelta ?? calibration?.loopDefaults?.minDelta ?? DEFAULT_MIN_DELTA,
   };
-  if (args.loop) {
-    const ledger = readLedger(ledgerPath);
-    const inspection = inspectLoop(ledger, configuredLimits);
-    if (inspection.stopReason) {
-      writeLedger(ledgerPath, { ...ledger, stopReason: inspection.stopReason });
-      if (fs.existsSync(reportPath)) {
-        const priorReport = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
-        fs.writeFileSync(reportPath, `${JSON.stringify({ ...priorReport, stopReason: inspection.stopReason }, null, 2)}\n`);
-      }
-      console.error(inspection.stopReason);
-      process.exitCode = inspection.exitCode;
-      return;
-    }
-  }
   let liveUrl;
   let sectionIndex = null;
   if (args.fullPage) {
@@ -224,6 +218,32 @@ async function main() {
     liveUrl = buildLiveUrl(args.port, args.slug, sectionCapture.entryUrl);
     sectionIndex = sectionCapture.sectionIndex;
     if (sectionCapture.warning) console.warn(sectionCapture.warning);
+  }
+  const captureScope = args.fullPage
+    ? { mode: 'full-page' }
+    : args.selector
+      ? { mode: 'selector', selector: args.selector }
+      : { mode: sectionIndex === null ? 'full-page-fallback' : 'section-index', ...(sectionIndex === null ? {} : { sectionIndex }) };
+  const refHashes = Object.fromEntries(BREAKPOINTS.map((bp) => [bp.name, crypto.createHash('sha256')
+    .update(fs.readFileSync(path.join(refDir, `${section}-${bp.name}.png`))).digest('hex')]));
+  const thresholdConfig = { thresholds: thresholdResolution.thresholds, source: thresholdResolution.source };
+  let ledger = null;
+  let resets = [];
+  if (args.loop || args.resetLoop) {
+    try { ledger = readLedger(ledgerPath); } catch (error) {
+      if (!args.resetLoop) throw error;
+      console.warn('WARNING: corrupt loop ledger reset; prior audit details could not be preserved.');
+    }
+  }
+  if (args.resetLoop) {
+    if (ledger?.stopReason) console.warn('WARNING: resetting a loop that had a HARD STOP; reset recorded in audit history.');
+    resets = resetLedger(ledgerPath, ledger);
+    ledger = resets.length ? initializeLedger(configuredLimits, { section, captureScope, refHashes, thresholdConfig, resets }) : null;
+    if (ledger) writeLedger(ledgerPath, ledger);
+  }
+  if (args.loop && ledger) {
+    assertLoopIdentity(ledger, { section, captureScope, refHashes, thresholdConfig });
+    if (ledger.stopReason) { console.error(ledger.stopReason); process.exitCode = 2; return; }
   }
   const capturePaths = await captureBreakpoints({
     liveUrl,
@@ -254,15 +274,14 @@ async function main() {
   }
 
   const pass = evaluateThreshold(breakpointResults, thresholdResolution.thresholds);
+  const anomalies = flagSsimAnomalies(breakpointResults, thresholdResolution.thresholds);
+  if (anomalies.length) console.warn(`WARNING: score passed but SSIM is anomalously low — verify colors manually (${anomalies.join(', ')})`);
   const report = {
     slug: args.slug,
     section,
     liveUrl,
-    captureScope: args.fullPage
-      ? { mode: 'full-page' }
-      : args.selector
-        ? { mode: 'selector', selector: args.selector }
-        : { mode: sectionIndex === null ? 'full-page-fallback' : 'section-index', sectionIndex },
+    captureScope,
+    refHashes,
     pixelmatchThreshold: PIXELMATCH_THRESHOLD,
     threshold: thresholdResolution.thresholds,
     thresholdSource: thresholdResolution.source,
@@ -270,22 +289,51 @@ async function main() {
     breakpoints: breakpointResults,
   };
   if (args.loop) {
-    const ledger = appendEntry(readLedger(ledgerPath), {
+    const ledgerPass = thresholdResolution.thresholds === null ? null : pass;
+    ledger = appendEntry(ledger, {
       timestamp: new Date().toISOString(),
       scores: Object.fromEntries(BREAKPOINTS.map((breakpoint) => [breakpoint.name, breakpointResults[breakpoint.name].score])),
-      pass: pass !== false,
-    }, configuredLimits);
+      pass: ledgerPass,
+      ssimAnomalies: anomalies,
+      failingBreakpoints: thresholdResolution.thresholds === null ? [] : BREAKPOINTS
+        .filter((bp) => !breakpointResults[bp.name].dimensionsMatch
+          || breakpointResults[bp.name].score > thresholdResolution.thresholds[bp.name])
+        .map((bp) => bp.name),
+    }, configuredLimits, { section, captureScope, refHashes, thresholdConfig, resets });
     writeLedger(ledgerPath, ledger);
+    if (thresholdResolution.thresholds === null) {
+      fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+      console.error('no threshold in effect — run compare:calibrate first');
+      process.exitCode = 1;
+      return;
+    }
+    const inspection = inspectLoop(ledger, configuredLimits, thresholdResolution.thresholds);
+    if (inspection.stopReason) {
+      ledger.stopReason = inspection.stopReason;
+      writeLedger(ledgerPath, ledger);
+      report.stopReason = inspection.stopReason;
+      fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+      console.error(inspection.stopReason);
+      process.exitCode = 2;
+      return;
+    }
   }
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   printSummary(breakpointResults, thresholdResolution.thresholds, pass, reportPath);
   if (pass === false) process.exitCode = 1;
+  } finally {
+    releaseLock(lockPath);
+  }
 }
 
 if (require.main === module) {
   main().catch((error) => {
+    if (error instanceof CorruptStateError || error instanceof CorruptCalibrationError) {
+      console.error('ledger/calibration corrupt — refusing to continue; use --reset-loop / re-run compare:calibrate');
+      process.exit(2);
+    }
     console.error(error.message);
-    process.exit(1);
+    process.exit(/another compare:score|mid-loop|hashes changed|scope changed/.test(error.message) ? 2 : 1);
   });
 }
 
