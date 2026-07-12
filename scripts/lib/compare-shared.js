@@ -134,7 +134,10 @@ function resolveSectionIndex({ pagePath, includesDir, section }) {
     };
   }
 
-  const includes = extractCampaignIncludes(fs.readFileSync(pagePath, 'utf8'));
+  // Work on comment-stripped source throughout so commented-out includes and
+  // sections never desynchronize include positions from literal-section counts.
+  const pageSource = stripMarkupComments(fs.readFileSync(pagePath, 'utf8'));
+  const includes = extractCampaignIncludes(pageSource);
   const targetInclude = `landing/${section}.html`;
   const targetPosition = includes.indexOf(targetInclude);
   if (targetPosition === -1) {
@@ -144,7 +147,34 @@ function resolveSectionIndex({ pagePath, includesDir, section }) {
     };
   }
 
-  let index = 0;
+  // The target partial must itself contribute a root <section>; otherwise the
+  // computed index would silently capture the FOLLOWING section.
+  const targetPath = path.join(includesDir, targetInclude);
+  if (!fs.existsSync(targetPath)) {
+    return { index: null, reason: `target partial not found: ${targetPath}` };
+  }
+  if (countRootSections(fs.readFileSync(targetPath, 'utf8')) < 1) {
+    return {
+      index: null,
+      reason: `target partial ${targetInclude} has no root <section> element; use --selector to scope it`,
+    };
+  }
+
+  // Literal <section> elements written directly in the page source before the
+  // target include also occupy top-level slots in the rendered DOM.
+  const includePattern = /{%\s*campaign_include\s+(['"])([^'"]+)\1\s*%}/g;
+  let literalPrefix = '';
+  let seen = 0;
+  let match;
+  while ((match = includePattern.exec(pageSource)) !== null) {
+    if (seen === targetPosition) {
+      literalPrefix = pageSource.slice(0, match.index);
+      break;
+    }
+    seen += 1;
+  }
+  let index = countRootSections(literalPrefix);
+
   for (const include of includes.slice(0, targetPosition)) {
     const partialPath = path.join(includesDir, include);
     if (!fs.existsSync(partialPath)) {

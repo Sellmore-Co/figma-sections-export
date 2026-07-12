@@ -97,9 +97,16 @@ function printSummary(results, threshold, pass, reportPath) {
         + result.ssim.toFixed(6),
     );
   }
-  const gate = threshold === null
-    ? 'not evaluated (no threshold supplied)'
-    : `${pass ? 'PASS' : 'FAIL'} at threshold ${threshold}`;
+  let gate;
+  if (pass === false) {
+    gate = threshold === null
+      ? 'FAIL (dimension gate)'
+      : `FAIL at threshold ${threshold}`;
+  } else if (pass === null) {
+    gate = 'dimension gate passed; pixel score not evaluated (no threshold supplied)';
+  } else {
+    gate = `PASS at threshold ${threshold}`;
+  }
   console.log(`\nOverall: ${gate}`);
   console.log(`Report: ${relativePath(reportPath)}`);
 }
@@ -212,6 +219,7 @@ async function main() {
   const reportPath = path.join(captureDir, `${section}-score.json`);
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   printSummary(breakpointResults, args.threshold, pass, reportPath);
+  if (pass === false) process.exitCode = 1;
 }
 
 if (require.main === module) {

@@ -103,10 +103,16 @@ async function captureBreakpoints({
         await page.goto(liveUrl, { waitUntil: 'load' });
         await page.evaluate(async () => {
           if (document.fonts?.ready) await document.fonts.ready;
+          // Force lazy images to start loading, then wait — bounded, because
+          // an image that never loads must not hang the capture.
           const images = Array.from(document.images);
-          await Promise.all(images.map((img) => (img.complete
+          for (const img of images) {
+            if (img.loading === 'lazy') img.loading = 'eager';
+          }
+          const allLoaded = Promise.all(images.map((img) => (img.complete
             ? Promise.resolve()
             : new Promise((resolve) => { img.addEventListener('load', resolve, { once: true }); img.addEventListener('error', resolve, { once: true }); }))));
+          await Promise.race([allLoaded, new Promise((resolve) => setTimeout(resolve, 10000))]);
         });
         await page.addStyleTag({
           content: `
@@ -124,7 +130,7 @@ async function captureBreakpoints({
         await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
 
         const outputPath = outputPathFor(breakpoint);
-        fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+        let screenshotBuffer;
         const captureTarget = fullPage
           ? { element: null, warning: null }
           : await findCaptureElement(page, { selector, sectionIndex });
@@ -143,7 +149,7 @@ async function captureBreakpoints({
               console.warn(
                 `Warning: scoped element has no bounding box at ${breakpoint.name}. Falling back to full-page capture.`,
               );
-              await page.screenshot({ path: outputPath, fullPage: true });
+              screenshotBuffer = await page.screenshot({ fullPage: true });
             } else {
               if (box.width !== breakpoint.width) {
                 console.warn(
@@ -151,15 +157,15 @@ async function captureBreakpoints({
                     + `at ${breakpoint.name}.`,
                 );
               }
-              await captureTarget.element.screenshot({ path: outputPath });
+              screenshotBuffer = await captureTarget.element.screenshot();
             }
           } finally {
             await captureTarget.element.dispose();
           }
         } else {
-          await page.screenshot({ path: outputPath, fullPage: true });
+          screenshotBuffer = await page.screenshot({ fullPage: true });
         }
-        captures[breakpoint.name] = outputPath;
+        captures[breakpoint.name] = { outputPath, buffer: screenshotBuffer };
       } finally {
         await page.close();
       }
@@ -168,7 +174,17 @@ async function captureBreakpoints({
     await browser.close();
   }
 
-  return captures;
+  // Write to disk only after the browser is closed: capture output lands
+  // inside the dev server's watched tree (src/{slug}/_ref/capture/), and a
+  // mid-loop write triggers live-reload, destroying the next breakpoint's
+  // page ("Execution context was destroyed").
+  const written = {};
+  for (const [name, capture] of Object.entries(captures)) {
+    fs.mkdirSync(path.dirname(capture.outputPath), { recursive: true });
+    fs.writeFileSync(capture.outputPath, capture.buffer);
+    written[name] = capture.outputPath;
+  }
+  return written;
 }
 
 module.exports = {

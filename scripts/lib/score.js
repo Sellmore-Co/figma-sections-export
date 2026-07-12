@@ -180,9 +180,12 @@ async function scorePair(referenceInput, candidateInput, options = {}) {
 }
 
 function evaluateThreshold(scores, threshold) {
-  if (threshold === null || threshold === undefined) return null;
   const values = Array.isArray(scores) ? scores : Object.values(scores);
-  return values.every((result) => result.dimensionsMatch && result.score < threshold);
+  // The dimension gate is independent of the optional pixel threshold: a
+  // dimension mismatch always fails, even when no threshold is supplied.
+  if (!values.every((result) => result.dimensionsMatch)) return false;
+  if (threshold === null || threshold === undefined) return null;
+  return values.every((result) => result.score <= threshold);
 }
 
 module.exports = {

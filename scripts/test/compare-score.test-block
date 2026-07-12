@@ -45,8 +45,18 @@ module.exports = ({ assert, fixtures, test }) => {
     const identicalResult = await scorePair(reference, identical);
     const defectResult = await scorePair(reference, defect);
     assert.strictEqual(evaluateThreshold([identicalResult], parsed.threshold), true);
-    assert.strictEqual(evaluateThreshold([defectResult], defectResult.score), false);
+    // Maximum-mismatch threshold is inclusive: score == threshold passes,
+    // so --threshold 0 can pass for identical images.
+    assert.strictEqual(evaluateThreshold([identicalResult], 0), true);
+    assert.strictEqual(evaluateThreshold([defectResult], defectResult.score), true);
+    assert.strictEqual(evaluateThreshold([defectResult], defectResult.score - 1e-9), false);
     assert.strictEqual(evaluateThreshold([identicalResult], null), null);
+  });
+
+  test('dimension gate fails independently of the optional threshold', async () => {
+    const mismatchResult = await scorePair(reference, dimensionMismatch);
+    assert.strictEqual(evaluateThreshold([mismatchResult], null), false);
+    assert.strictEqual(evaluateThreshold([mismatchResult], 1), false);
   });
 
   test('capture flags parse selector and full-page escape hatches', () => {
@@ -65,7 +75,6 @@ module.exports = ({ assert, fixtures, test }) => {
   test('section indexes follow include order and ignore zero-section partials', () => {
     const expectedIndexes = {
       alpha: 0,
-      spacer: 1,
       beta: 1,
       gamma: 3,
     };
@@ -78,6 +87,32 @@ module.exports = ({ assert, fixtures, test }) => {
       });
       assert.deepStrictEqual(resolution, { index: expectedIndex, reason: null });
     }
+  });
+
+  test('zero-section target partial fails resolution instead of capturing a neighbor', () => {
+    const resolution = resolveSectionIndex({
+      pagePath: sectionCapturePage,
+      includesDir: sectionCaptureIncludes,
+      section: 'spacer',
+    });
+    assert.strictEqual(resolution.index, null);
+    assert.match(resolution.reason, /no root <section>/);
+  });
+
+  test('literal page-level sections before the include shift the index', () => {
+    const literalPage = path.join(sectionCaptureSrc, 'landing-literal.html');
+    const alpha = resolveSectionIndex({
+      pagePath: literalPage,
+      includesDir: sectionCaptureIncludes,
+      section: 'alpha',
+    });
+    assert.deepStrictEqual(alpha, { index: 1, reason: null });
+    const beta = resolveSectionIndex({
+      pagePath: literalPage,
+      includesDir: sectionCaptureIncludes,
+      section: 'beta',
+    });
+    assert.deepStrictEqual(beta, { index: 2, reason: null });
   });
 
   test('section capture uses landing page and falls back when section is absent', () => {
