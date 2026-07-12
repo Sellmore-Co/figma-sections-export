@@ -178,21 +178,20 @@ module.exports = ({ assert, fixtures, test }) => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test('lock rejects concurrency and steals locks older than ten minutes', () => {
+  test('lock rejects concurrency and never auto-steals stale locks', () => {
     const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'score-lock-'));
     const lock = path.join(tmpDir, 'loop.lock');
-    const first = acquireLock(lock);
+    acquireLock(lock);
     assert.throws(() => acquireLock(lock), /another compare:score run holds the lock/);
     const old = new Date(Date.now() - 11 * 60 * 1000);
     fs.utimesSync(lock, old, old);
-    const warnings = [];
-    const stealer = acquireLock(lock, Date.now(), (message) => warnings.push(message));
-    assert.match(warnings[0], /stealing stale/);
-    // Ownership: the original holder's release must NOT remove the stealer's lock.
-    releaseLock(lock, first);
-    assert.strictEqual(fs.existsSync(lock), true);
-    releaseLock(lock, stealer);
+    // No automatic steal — stale locks require explicit human removal, which
+    // eliminates the check-then-claim race entirely.
+    assert.throws(() => acquireLock(lock), /remove it with: rmdir/);
+    releaseLock(lock);
     assert.strictEqual(fs.existsSync(lock), false);
+    acquireLock(lock);
+    releaseLock(lock);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 

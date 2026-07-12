@@ -194,7 +194,7 @@ async function main() {
   const ledgerPath = path.join(captureDir, `${section}-loop.json`);
   const reportPath = path.join(captureDir, `${section}-score.json`);
   const lockPath = `${ledgerPath}.lock`;
-  const lockOwner = acquireLock(lockPath);
+  acquireLock(lockPath);
   try {
   const calibrationPath = path.join(captureDir, `${section}-calibration.json`);
   let calibration = null;
@@ -329,7 +329,7 @@ async function main() {
   printSummary(breakpointResults, thresholdResolution.thresholds, pass, reportPath);
   if (pass === false) process.exitCode = 1;
   } finally {
-    releaseLock(lockPath, lockOwner);
+    releaseLock(lockPath);
   }
 }
 

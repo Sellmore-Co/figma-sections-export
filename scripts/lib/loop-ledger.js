@@ -141,34 +141,25 @@ function resetLedger(file, previous, now = new Date().toISOString()) {
   return resets;
 }
 
-function lockToken() {
-  return `${process.pid}-${process.hrtime.bigint()}`;
-}
-
-function acquireLock(file, now = Date.now(), warn = console.warn) {
-  const token = lockToken();
-  try { fs.writeFileSync(file, `${token}\n`, { flag: 'wx' }); return token; } catch (error) {
+// Lock = a directory created atomically with mkdir. There is deliberately NO
+// automatic steal: any steal protocol on plain fs is a TOCTOU race between
+// checking staleness and claiming the lock. A crash can leave a stale lock;
+// the error message tells the human exactly what to remove. Release is only
+// ever called by the process that acquired (single code path), so ownership
+// tokens are unnecessary.
+function acquireLock(file, now = Date.now()) {
+  try { fs.mkdirSync(file); return; } catch (error) {
     if (error.code !== 'EEXIST') throw error;
   }
   const age = now - fs.statSync(file).mtimeMs;
   if (age <= STALE_LOCK_MS) throw new Error('another compare:score run holds the lock');
-  warn('WARNING: stealing stale compare:score lock older than 10 minutes.');
-  // Rename is the takeover claim: of N concurrent stealers only one rename
-  // succeeds; the losers see ENOENT and must re-contend via wx below.
-  try { fs.renameSync(file, `${file}.stale-${token}`); fs.unlinkSync(`${file}.stale-${token}`); } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-  }
-  fs.writeFileSync(file, `${token}\n`, { flag: 'wx' });
-  return token;
+  throw new Error(
+    `stale compare:score lock (older than 10 minutes): ${file} — if no other run is active, remove it with: rmdir "${file}"`,
+  );
 }
 
-function releaseLock(file, token) {
-  // Only remove a lock we own: after a stale steal, the original process must
-  // not delete the stealer's lock and admit a third writer.
-  try {
-    if (token !== undefined && fs.readFileSync(file, 'utf8').trim() !== token) return;
-    fs.unlinkSync(file);
-  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+function releaseLock(file) {
+  try { fs.rmdirSync(file); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
 
 module.exports = {
