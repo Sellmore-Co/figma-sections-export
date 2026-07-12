@@ -148,7 +148,18 @@ function resolveSectionIndex({ pagePath, includesDir, section }) {
   if (!fs.existsSync(targetPath)) {
     return { index: null, reason: `target partial not found: ${targetPath}` };
   }
-  const targetRootSections = countRootSections(fs.readFileSync(targetPath, 'utf8'));
+  const targetSource = stripMarkupComments(fs.readFileSync(targetPath, 'utf8'));
+  // Partials are leaf files in this repo. A partial that itself includes other
+  // partials would render sections countRootSections() cannot see, silently
+  // desynchronizing the index — reject rather than expand recursively.
+  const nestedIncludeReason = (include, where) => ({
+    index: null,
+    reason: `${where} ${include} contains campaign_include tags; section-index capture only supports leaf partials — use --selector to scope it`,
+  });
+  if (extractCampaignIncludes(targetSource).length > 0) {
+    return nestedIncludeReason(targetInclude, 'target partial');
+  }
+  const targetRootSections = countRootSections(targetSource);
   if (targetRootSections !== 1) {
     return {
       index: null,
@@ -199,7 +210,11 @@ function resolveSectionIndex({ pagePath, includesDir, section }) {
         reason: `included partial not found while resolving section order: ${partialPath}`,
       };
     }
-    index += countRootSections(fs.readFileSync(partialPath, 'utf8'));
+    const partialSource = stripMarkupComments(fs.readFileSync(partialPath, 'utf8'));
+    if (extractCampaignIncludes(partialSource).length > 0) {
+      return nestedIncludeReason(includeName, 'preceding partial');
+    }
+    index += countRootSections(partialSource);
   }
 
   return {
