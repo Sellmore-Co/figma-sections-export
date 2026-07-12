@@ -12,10 +12,13 @@ const {
   resolveSectionCapture,
   resolveSectionPage,
 } = require('./lib/compare-shared');
-const { PIXELMATCH_THRESHOLD, evaluateThreshold, scorePair } = require('./lib/score');
+const { PIXELMATCH_THRESHOLD, evaluateThreshold, resolveThresholds, scorePair } = require('./lib/score');
+const { DEFAULT_MAX_ITERATIONS, DEFAULT_MIN_DELTA, appendEntry, inspectLoop, readLedger, resetLedger, writeLedger } = require('./lib/loop-ledger');
 
 function printUsage(stream = console.error) {
   stream('Usage: npm run compare:score <slug> [section] [port] [--threshold <ratio>] [--selector <css> | --full-page]');
+  stream('       [--loop] [--max-iterations <n>] [--min-delta <ratio>] [--reset-loop]');
+  stream('Exit codes: 0 pass, 1 fail but remediation may continue, 2 hard stop.');
   stream('By default, a known landing section is captured by its source-resolved top-level <section> index.');
   stream('  --selector <css>  Capture the first element matching an explicit CSS selector.');
   stream('  --full-page       Capture the full configured entry page (disables section scoping).');
@@ -33,6 +36,10 @@ function parseArgs(rawArgs) {
   let threshold = null;
   let selector = null;
   let fullPage = false;
+  let loop = false;
+  let resetLoop = false;
+  let maxIterations = null;
+  let minDelta = null;
 
   for (let index = 0; index < rawArgs.length; index += 1) {
     const argument = rawArgs[index];
@@ -54,6 +61,14 @@ function parseArgs(rawArgs) {
       if (!selector) return { error: 'Missing value for --selector.' };
     } else if (argument === '--full-page') {
       fullPage = true;
+    } else if (argument === '--loop') {
+      loop = true;
+    } else if (argument === '--reset-loop') {
+      resetLoop = true;
+    } else if (argument === '--max-iterations' || argument.startsWith('--max-iterations=')) {
+      maxIterations = Number(argument.includes('=') ? argument.slice(argument.indexOf('=') + 1) : rawArgs[++index]);
+    } else if (argument === '--min-delta' || argument.startsWith('--min-delta=')) {
+      minDelta = Number(argument.includes('=') ? argument.slice(argument.indexOf('=') + 1) : rawArgs[++index]);
     } else if (argument.startsWith('--')) {
       return { error: `Unknown option: ${argument}` };
     } else {
@@ -67,12 +82,18 @@ function parseArgs(rawArgs) {
   if (selector && fullPage) {
     return { error: '--selector and --full-page cannot be used together.' };
   }
+  if (maxIterations !== null && (!Number.isInteger(maxIterations) || maxIterations < 1)) return { error: '--max-iterations must be a positive integer.' };
+  if (minDelta !== null && (!Number.isFinite(minDelta) || minDelta < 0 || minDelta > 1)) return { error: '--min-delta must be a ratio from 0 to 1.' };
 
   return {
     ...parseComparisonPositionals(positional),
     threshold,
     selector,
     fullPage,
+    loop,
+    resetLoop,
+    maxIterations,
+    minDelta,
     help: false,
   };
 }
@@ -85,7 +106,7 @@ function signed(value) {
   return `${value >= 0 ? '+' : ''}${value}`;
 }
 
-function printSummary(results, threshold, pass, reportPath) {
+function printSummary(results, thresholds, pass, reportPath) {
   console.log('\nBreakpoint  Score       Dimensions  Delta (w,h)    SSIM');
   console.log('----------  ----------  ----------  -------------  ----------');
   for (const breakpoint of BREAKPOINTS) {
@@ -99,13 +120,13 @@ function printSummary(results, threshold, pass, reportPath) {
   }
   let gate;
   if (pass === false) {
-    gate = threshold === null
+    gate = thresholds === null
       ? 'FAIL (dimension gate)'
-      : `FAIL at threshold ${threshold}`;
+      : 'FAIL at per-breakpoint threshold';
   } else if (pass === null) {
     gate = 'dimension gate passed; pixel score not evaluated (no threshold supplied)';
   } else {
-    gate = `PASS at threshold ${threshold}`;
+    gate = 'PASS at per-breakpoint threshold';
   }
   console.log(`\nOverall: ${gate}`);
   console.log(`Report: ${relativePath(reportPath)}`);
@@ -160,6 +181,37 @@ async function main() {
   }
 
   const captureDir = path.join(refDir, 'capture');
+  fs.mkdirSync(captureDir, { recursive: true });
+  const calibrationPath = path.join(captureDir, `${section}-calibration.json`);
+  const calibration = fs.existsSync(calibrationPath)
+    ? JSON.parse(fs.readFileSync(calibrationPath, 'utf8'))
+    : null;
+  const thresholdResolution = resolveThresholds(
+    args.threshold,
+    calibration,
+    BREAKPOINTS.map((breakpoint) => breakpoint.name),
+  );
+  const ledgerPath = path.join(captureDir, `${section}-loop.json`);
+  const reportPath = path.join(captureDir, `${section}-score.json`);
+  if (args.resetLoop) resetLedger(ledgerPath);
+  const configuredLimits = {
+    maxIterations: args.maxIterations ?? calibration?.loopDefaults?.maxIterations ?? DEFAULT_MAX_ITERATIONS,
+    minDelta: args.minDelta ?? calibration?.loopDefaults?.minDelta ?? DEFAULT_MIN_DELTA,
+  };
+  if (args.loop) {
+    const ledger = readLedger(ledgerPath);
+    const inspection = inspectLoop(ledger, configuredLimits);
+    if (inspection.stopReason) {
+      writeLedger(ledgerPath, { ...ledger, stopReason: inspection.stopReason });
+      if (fs.existsSync(reportPath)) {
+        const priorReport = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+        fs.writeFileSync(reportPath, `${JSON.stringify({ ...priorReport, stopReason: inspection.stopReason }, null, 2)}\n`);
+      }
+      console.error(inspection.stopReason);
+      process.exitCode = inspection.exitCode;
+      return;
+    }
+  }
   let liveUrl;
   let sectionIndex = null;
   if (args.fullPage) {
@@ -201,7 +253,7 @@ async function main() {
     };
   }
 
-  const pass = evaluateThreshold(breakpointResults, args.threshold);
+  const pass = evaluateThreshold(breakpointResults, thresholdResolution.thresholds);
   const report = {
     slug: args.slug,
     section,
@@ -212,13 +264,21 @@ async function main() {
         ? { mode: 'selector', selector: args.selector }
         : { mode: sectionIndex === null ? 'full-page-fallback' : 'section-index', sectionIndex },
     pixelmatchThreshold: PIXELMATCH_THRESHOLD,
-    threshold: args.threshold,
+    threshold: thresholdResolution.thresholds,
+    thresholdSource: thresholdResolution.source,
     pass,
     breakpoints: breakpointResults,
   };
-  const reportPath = path.join(captureDir, `${section}-score.json`);
+  if (args.loop) {
+    const ledger = appendEntry(readLedger(ledgerPath), {
+      timestamp: new Date().toISOString(),
+      scores: Object.fromEntries(BREAKPOINTS.map((breakpoint) => [breakpoint.name, breakpointResults[breakpoint.name].score])),
+      pass: pass !== false,
+    }, configuredLimits);
+    writeLedger(ledgerPath, ledger);
+  }
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-  printSummary(breakpointResults, args.threshold, pass, reportPath);
+  printSummary(breakpointResults, thresholdResolution.thresholds, pass, reportPath);
   if (pass === false) process.exitCode = 1;
 }
 

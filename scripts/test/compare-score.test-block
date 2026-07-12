@@ -3,7 +3,8 @@ const path = require('path');
 
 const { parseArgs } = require('../compare-score');
 const { resolveSectionCapture, resolveSectionIndex } = require('../lib/compare-shared');
-const { evaluateThreshold, scorePair } = require('../lib/score');
+const { evaluateThreshold, resolveThresholds, scorePair } = require('../lib/score');
+const { appendEntry, inspectLoop, resetLedger } = require('../lib/loop-ledger');
 
 module.exports = ({ assert, fixtures, test }) => {
   const reference = path.join(fixtures, 'score-reference.png');
@@ -57,6 +58,59 @@ module.exports = ({ assert, fixtures, test }) => {
     const mismatchResult = await scorePair(reference, dimensionMismatch);
     assert.strictEqual(evaluateThreshold([mismatchResult], null), false);
     assert.strictEqual(evaluateThreshold([mismatchResult], 1), false);
+  });
+
+  test('threshold precedence is flag, then calibration, then null', () => {
+    const calibration = { desktop: { threshold: 0.01 }, tablet: { threshold: 0.02 }, mobile: { threshold: 0.03 } };
+    assert.deepStrictEqual(resolveThresholds(0.5, calibration, ['desktop', 'tablet', 'mobile']), {
+      thresholds: { desktop: 0.5, tablet: 0.5, mobile: 0.5 }, source: 'flag',
+    });
+    assert.strictEqual(resolveThresholds(null, calibration, ['desktop', 'tablet', 'mobile']).source, 'calibration');
+    assert.deepStrictEqual(resolveThresholds(null, null, ['desktop']), { thresholds: null, source: null });
+  });
+
+  test('per-breakpoint thresholds are evaluated independently', () => {
+    const scores = {
+      desktop: { score: 0.011, dimensionsMatch: true },
+      mobile: { score: 0.011, dimensionsMatch: true },
+    };
+    assert.strictEqual(evaluateThreshold(scores, { desktop: 0.01, mobile: 0.02 }), false);
+    scores.desktop.score = 0.009;
+    assert.strictEqual(evaluateThreshold(scores, { desktop: 0.01, mobile: 0.02 }), true);
+  });
+
+  test('loop hard-stops at max iterations and recorded max cannot be raised', () => {
+    let ledger = null;
+    for (let i = 0; i < 3; i += 1) ledger = appendEntry(ledger, { scores: { desktop: 0.3 - i * 0.1 }, pass: false }, { maxIterations: 3, minDelta: 0 });
+    const refusal = inspectLoop(ledger, { maxIterations: 99, minDelta: 0 });
+    assert.strictEqual(refusal.exitCode, 2);
+    assert.match(refusal.stopReason, /max iterations \(3\)/);
+  });
+
+  test('loop hard-stops on stagnation and worsening', () => {
+    const limits = { maxIterations: 5, minDelta: 0.05 };
+    let stagnant = appendEntry(null, { scores: { desktop: 0.2 }, pass: false }, limits);
+    stagnant = appendEntry(stagnant, { scores: { desktop: 0.195 }, pass: false }, limits);
+    assert.match(inspectLoop(stagnant, limits).stopReason, /score not improving/);
+    let worsening = appendEntry(null, { scores: { desktop: 0.2 }, pass: false }, limits);
+    worsening = appendEntry(worsening, { scores: { desktop: 0.25 }, pass: false }, limits);
+    assert.match(inspectLoop(worsening, limits).stopReason, /score not improving/);
+  });
+
+  test('pass starts the next loop fresh and reset is represented by an empty ledger', () => {
+    const limits = { maxIterations: 5, minDelta: 0.05 };
+    let ledger = appendEntry(null, { scores: { desktop: 0.2 }, pass: false }, limits);
+    ledger = appendEntry(ledger, { scores: { desktop: 0.001 }, pass: true }, limits);
+    ledger = appendEntry(ledger, { scores: { desktop: 0.3 }, pass: false }, limits);
+    assert.strictEqual(ledger.entries.length, 1);
+    assert.strictEqual(ledger.entries[0].iteration, 1);
+    assert.strictEqual(inspectLoop(null, limits).stopReason, null);
+    const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'loop-ledger-'));
+    const ledgerPath = path.join(tmpDir, 'loop.json');
+    fs.writeFileSync(ledgerPath, '{}');
+    resetLedger(ledgerPath);
+    assert.strictEqual(fs.existsSync(ledgerPath), false);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   test('capture flags parse selector and full-page escape hatches', () => {

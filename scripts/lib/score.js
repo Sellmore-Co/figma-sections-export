@@ -180,12 +180,32 @@ async function scorePair(referenceInput, candidateInput, options = {}) {
 }
 
 function evaluateThreshold(scores, threshold) {
-  const values = Array.isArray(scores) ? scores : Object.values(scores);
+  const entries = Array.isArray(scores)
+    ? scores.map((result, index) => [String(index), result])
+    : Object.entries(scores);
+  const values = entries.map(([, result]) => result);
   // The dimension gate is independent of the optional pixel threshold: a
   // dimension mismatch always fails, even when no threshold is supplied.
   if (!values.every((result) => result.dimensionsMatch)) return false;
   if (threshold === null || threshold === undefined) return null;
-  return values.every((result) => result.score <= threshold);
+  return entries.every(([name, result]) => {
+    const breakpointThreshold = typeof threshold === 'number' ? threshold : threshold[name];
+    return Number.isFinite(breakpointThreshold) && result.score <= breakpointThreshold;
+  });
+}
+
+function resolveThresholds(explicitThreshold, calibration, breakpointNames) {
+  if (explicitThreshold !== null && explicitThreshold !== undefined) {
+    return {
+      thresholds: Object.fromEntries(breakpointNames.map((name) => [name, explicitThreshold])),
+      source: 'flag',
+    };
+  }
+  if (calibration) {
+    const thresholds = Object.fromEntries(breakpointNames.map((name) => [name, calibration[name]?.threshold]));
+    if (Object.values(thresholds).every(Number.isFinite)) return { thresholds, source: 'calibration' };
+  }
+  return { thresholds: null, source: null };
 }
 
 module.exports = {
@@ -194,6 +214,7 @@ module.exports = {
   REGION_COLUMNS,
   REGION_ROWS,
   evaluateThreshold,
+  resolveThresholds,
   normalizePair,
   readDimensions,
   pixelmatchScore,

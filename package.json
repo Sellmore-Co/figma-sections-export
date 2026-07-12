@@ -17,6 +17,7 @@
     "fonts": "node scripts/generate-fonts-css.js",
     "compare": "node scripts/compare-ref.js",
     "compare:score": "node scripts/compare-score.js",
+    "compare:calibrate": "node scripts/compare-calibrate.js",
     "validate": "node scripts/validate-export.js",
     "handoff": "node scripts/handoff.js",
     "infer": "node scripts/infer-section-name.js",
