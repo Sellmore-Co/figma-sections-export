@@ -20,16 +20,16 @@ Pixelmatch values are mismatched-pixel ratios (lower is more similar). SSIM is m
 
 | Class | Perturbation | Dimensions match? | Pixelmatch 0.1 | ms | Pixelmatch 0.3 | ms | Mean SSIM | ms |
 | --- | --- | :---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| CONTROL | Golden vs itself | Yes | 0.000000 | 2.94 | 0.000000 | 0.52 | 1.000000 | 82.90 |
-| NOISE | 1px horizontal translate | Yes | 0.013167 | 12.30 | 0.006805 | 7.32 | 0.970495 | 66.00 |
-| NOISE | Localized text/vector-edge AA (mild) | Yes | 0.001235 | 2.18 | 0.000000 | 1.99 | 0.999720 | 50.18 |
-| NOISE | Localized text/vector-edge AA (strong) | Yes | 0.017858 | 4.16 | 0.000000 | 2.01 | 0.998492 | 58.76 |
-| NOISE | Global brightness +2% | Yes | 0.000000 | 3.66 | 0.000000 | 3.67 | 0.996597 | 48.31 |
-| DEFECT | 200px band shifted down 24px | Yes | 0.061479 | 10.19 | 0.036746 | 5.66 | 0.794460 | 51.89 |
-| DEFECT | Button-sized region removed | Yes | 0.022865 | 2.55 | 0.022847 | 2.35 | 0.973823 | 46.40 |
-| DEFECT | Whole image hue +30deg | Yes | 0.154170 | 24.29 | 0.000000 | 3.30 | 0.998322 | 51.27 |
-| DEFECT | Extra 100px right-side canvas strip | No (+100×+0) | 0.064935 | 3.21 | 0.000000 | 1.69 | 0.985589 | 49.48 |
-| DEFECT | Text area scaled to 115% | Yes | 0.029285 | 4.56 | 0.027474 | 4.03 | 0.839757 | 53.40 |
+| CONTROL | Golden vs itself | Yes | 0.000000 | 3.41 | 0.000000 | 0.54 | 1.000000 | 94.24 |
+| NOISE | 1px horizontal translate | Yes | 0.013167 | 13.25 | 0.006805 | 8.03 | 0.970495 | 68.28 |
+| NOISE | Localized text/vector-edge AA (mild) | Yes | 0.001235 | 2.25 | 0.000000 | 2.30 | 0.999720 | 55.13 |
+| NOISE | Localized text/vector-edge AA (strong) | Yes | 0.017858 | 4.75 | 0.000000 | 2.03 | 0.998492 | 55.93 |
+| NOISE | Global brightness +2% | Yes | 0.000000 | 3.76 | 0.000000 | 3.83 | 0.996597 | 56.16 |
+| DEFECT | 200px band shifted down 24px | Yes | 0.061479 | 11.11 | 0.036746 | 6.42 | 0.794460 | 62.17 |
+| DEFECT | Button-sized region removed | Yes | 0.022865 | 2.70 | 0.022847 | 2.64 | 0.973823 | 59.77 |
+| DEFECT | Whole image hue +30deg | Yes | 0.154170 | 24.75 | 0.000000 | 3.36 | 0.998322 | 51.41 |
+| DEFECT | Extra 100px right-side canvas strip | No (+100×+0) | 0.064935 | 3.29 | 0.000000 | 1.72 | 0.985589 | 60.16 |
+| DEFECT | Text area scaled to 115% | Yes | 0.029285 | 4.64 | 0.027474 | 4.06 | 0.839757 | 51.42 |
 
 ## Separability
 
@@ -41,6 +41,10 @@ For Pixelmatch, the NOISE boundary is the highest mismatch ratio and the DEFECT 
 | Pixelmatch 0.3 | translate-x-1px: 0.006805 | hue-rotate-30deg: 0.000000 | -0.006805 | No | none |
 | SSIM | translate-x-1px: 0.970495 | hue-rotate-30deg: 0.998322 | -0.027827 | No | none |
 
+## Sensitivity
+
+The synthetic edge-AA noise model has a free `strength` parameter, and the separability verdict depends on it: at strength 0.45 the strong AA case scores 0.017858 on Pixelmatch 0.1, but at 0.55 it scores 0.024704 — above the missing-button defect's 0.022865 — which eliminates separability. The luminance-gradient mask also cannot distinguish glyph edges from CSS boxes, icons, or photographic detail. This is why the midpoint above is labeled a synthetic-corpus artifact: the nomination of Pixelmatch 0.1 is supported (it is the only metric that separates any reasonable parameterization while the other two fail structurally), but the numeric threshold is not. Calibrate the production threshold from the empirical noise floor of real captures, and set it between that floor and the smallest defect the harness must catch.
+
 ## Recommendation
 
-The corrected corpus supports **one standalone candidate gate**: **Pixelmatch 0.1 0.020361** (fail at or above). This recommendation is selected generically from every metric whose worst NOISE and best DEFECT boundaries have a positive gap; it does not privilege SSIM. Dimension equality must remain a separate first-class gate because even white excess canvas can be invisible to pixel metrics after padding. Thresholds remain provisional until Phase 2 validates them against real browser captures.
+This spike supports an ELIMINATE / NOMINATE conclusion, not a threshold. **Pixelmatch 0.3** and **SSIM** are **eliminated**: they fail to separate even this favorable synthetic corpus (SSIM rates the hue defect as more similar than the tolerated 1px translation; Pixelmatch 0.3 scores the hue defect at zero). **Pixelmatch 0.1** (synthetic-corpus midpoint 0.020361 — NOT a production threshold) is **nominated** as the sole candidate metric, selected generically from every metric whose worst NOISE and best DEFECT boundaries have a positive gap. The midpoint above is parameter-dependent (see Sensitivity below) and must not be shipped as a gate; the production threshold must be calibrated from the real noise floor — repeat captures of the golden frame's live render vs the Figma ref — in the harness's threshold-calibration phase. Dimension equality must remain a separate first-class gate because even white excess canvas can be invisible to pixel metrics after padding.

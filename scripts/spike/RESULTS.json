@@ -11,6 +11,11 @@
     "height": 799
   },
   "normalization": "Top-left anchor; pad both images to union canvas with opaque white; never crop excess content.",
+  "caveats": [
+    "candidateThreshold values are synthetic-corpus midpoints, not production thresholds.",
+    "The edge-AA noise strength parameter controls separability: strength 0.45 -> 0.55 moves the strong AA case from 0.017858 to 0.024704 on Pixelmatch 0.1, past the missing-button defect at 0.022865.",
+    "Production threshold must be calibrated from the real noise floor: repeat captures of the golden frame live render vs the Figma ref."
+  ],
   "comparisons": [
     {
       "id": "self",
@@ -40,17 +45,17 @@
         "threshold01": {
           "mismatchPixels": 0,
           "mismatchRatio": 0,
-          "runtimeMs": 2.938875
+          "runtimeMs": 3.412791
         },
         "threshold03": {
           "mismatchPixels": 0,
           "mismatchRatio": 0,
-          "runtimeMs": 0.516917
+          "runtimeMs": 0.539583
         }
       },
       "ssim": {
         "mean": 1,
-        "runtimeMs": 82.895792
+        "runtimeMs": 94.238291
       }
     },
     {
@@ -81,17 +86,17 @@
         "threshold01": {
           "mismatchPixels": 15149,
           "mismatchRatio": 0.013166631900987345,
-          "runtimeMs": 12.298667
+          "runtimeMs": 13.249125
         },
         "threshold03": {
           "mismatchPixels": 7830,
           "mismatchRatio": 0.006805381727158949,
-          "runtimeMs": 7.316167
+          "runtimeMs": 8.03025
         }
       },
       "ssim": {
         "mean": 0.9704949846218931,
-        "runtimeMs": 65.999167
+        "runtimeMs": 68.278458
       }
     },
     {
@@ -122,17 +127,17 @@
         "threshold01": {
           "mismatchPixels": 1421,
           "mismatchRatio": 0.0012350507578918091,
-          "runtimeMs": 2.181208
+          "runtimeMs": 2.246208
         },
         "threshold03": {
           "mismatchPixels": 0,
           "mismatchRatio": 0,
-          "runtimeMs": 1.99175
+          "runtimeMs": 2.295459
         }
       },
       "ssim": {
         "mean": 0.9997198284419176,
-        "runtimeMs": 50.179583
+        "runtimeMs": 55.133125
       }
     },
     {
@@ -163,17 +168,17 @@
         "threshold01": {
           "mismatchPixels": 20547,
           "mismatchRatio": 0.017858260325406758,
-          "runtimeMs": 4.164916
+          "runtimeMs": 4.754958
         },
         "threshold03": {
           "mismatchPixels": 0,
           "mismatchRatio": 0,
-          "runtimeMs": 2.012584
+          "runtimeMs": 2.026542
         }
       },
       "ssim": {
         "mean": 0.9984924947113426,
-        "runtimeMs": 58.756292
+        "runtimeMs": 55.925083
       }
     },
     {
@@ -204,17 +209,17 @@
         "threshold01": {
           "mismatchPixels": 0,
           "mismatchRatio": 0,
-          "runtimeMs": 3.655792
+          "runtimeMs": 3.756041
         },
         "threshold03": {
           "mismatchPixels": 0,
           "mismatchRatio": 0,
-          "runtimeMs": 3.673375
+          "runtimeMs": 3.827917
         }
       },
       "ssim": {
         "mean": 0.9965973438889881,
-        "runtimeMs": 48.314708
+        "runtimeMs": 56.1555
       }
     },
     {
@@ -245,17 +250,17 @@
         "threshold01": {
           "mismatchPixels": 70735,
           "mismatchRatio": 0.06147875816993464,
-          "runtimeMs": 10.187958
+          "runtimeMs": 11.111334
         },
         "threshold03": {
           "mismatchPixels": 42279,
           "mismatchRatio": 0.03674645390070922,
-          "runtimeMs": 5.660791
+          "runtimeMs": 6.422791
         }
       },
       "ssim": {
         "mean": 0.794459572273726,
-        "runtimeMs": 51.890208
+        "runtimeMs": 62.169667
       }
     },
     {
@@ -286,17 +291,17 @@
         "threshold01": {
           "mismatchPixels": 26307,
           "mismatchRatio": 0.022864518147684604,
-          "runtimeMs": 2.55475
+          "runtimeMs": 2.699
         },
         "threshold03": {
           "mismatchPixels": 26287,
           "mismatchRatio": 0.02284713530802392,
-          "runtimeMs": 2.349333
+          "runtimeMs": 2.644041
         }
       },
       "ssim": {
         "mean": 0.9738226911036579,
-        "runtimeMs": 46.401666
+        "runtimeMs": 59.765583
       }
     },
     {
@@ -327,17 +332,17 @@
         "threshold01": {
           "mismatchPixels": 177382,
           "mismatchRatio": 0.1541701432345988,
-          "runtimeMs": 24.286875
+          "runtimeMs": 24.749833
         },
         "threshold03": {
           "mismatchPixels": 0,
           "mismatchRatio": 0,
-          "runtimeMs": 3.299542
+          "runtimeMs": 3.35925
         }
       },
       "ssim": {
         "mean": 0.9983224510247589,
-        "runtimeMs": 51.271166
+        "runtimeMs": 51.407917
       }
     },
     {
@@ -368,17 +373,17 @@
         "threshold01": {
           "mismatchPixels": 79900,
           "mismatchRatio": 0.06493506493506493,
-          "runtimeMs": 3.214209
+          "runtimeMs": 3.292458
         },
         "threshold03": {
           "mismatchPixels": 0,
           "mismatchRatio": 0,
-          "runtimeMs": 1.6865
+          "runtimeMs": 1.722625
         }
       },
       "ssim": {
         "mean": 0.9855885314810663,
-        "runtimeMs": 49.478
+        "runtimeMs": 60.163708
       }
     },
     {
@@ -409,17 +414,17 @@
         "threshold01": {
           "mismatchPixels": 33694,
           "mismatchRatio": 0.02928486997635934,
-          "runtimeMs": 4.564041
+          "runtimeMs": 4.643875
         },
         "threshold03": {
           "mismatchPixels": 31610,
           "mismatchRatio": 0.027473578083715755,
-          "runtimeMs": 4.031958
+          "runtimeMs": 4.058041
         }
       },
       "ssim": {
         "mean": 0.8397567364453032,
-        "runtimeMs": 53.39625
+        "runtimeMs": 51.419667
       }
     }
   ],
