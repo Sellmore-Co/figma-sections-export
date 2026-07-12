@@ -31,3 +31,6 @@ src/
 
 # Campaign data — local, not part of the tool
 _data/campaigns.json
+
+# Generated metric-spike images (recreated from the local golden reference)
+scripts/spike/out/

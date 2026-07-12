@@ -1,0 +1,258 @@
+{
+  "spike": "phase-1-image-diff-metric",
+  "golden": {
+    "file": "src/shield/_ref/hero-4-desktop.png",
+    "referenceSet": [
+      "hero-4-desktop.png",
+      "hero-4-tablet.png",
+      "hero-4-mobile.png"
+    ],
+    "width": 1440,
+    "height": 799
+  },
+  "normalization": "Top-left anchor; crop excess right/bottom; pad missing right/bottom opaque white.",
+  "comparisons": [
+    {
+      "id": "self",
+      "class": "CONTROL",
+      "label": "Golden vs itself",
+      "file": "src/shield/_ref/hero-4-desktop.png",
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 3.076167
+        },
+        "threshold03": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 0.83225
+        }
+      },
+      "ssim": {
+        "mean": 1,
+        "runtimeMs": 79.866083
+      }
+    },
+    {
+      "id": "translate-x-1px",
+      "class": "NOISE",
+      "label": "1px horizontal translate",
+      "file": "scripts/spike/out/noise-translate-x-1px.png",
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 15149,
+          "mismatchRatio": 0.013166631900987345,
+          "runtimeMs": 12.520208
+        },
+        "threshold03": {
+          "mismatchPixels": 7830,
+          "mismatchRatio": 0.006805381727158949,
+          "runtimeMs": 7.581459
+        }
+      },
+      "ssim": {
+        "mean": 0.9704949846218931,
+        "runtimeMs": 66.929
+      }
+    },
+    {
+      "id": "blur-sigma-0.5",
+      "class": "NOISE",
+      "label": "Gaussian blur sigma 0.5",
+      "file": "scripts/spike/out/noise-blur-sigma-0.5.png",
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 8618,
+          "mismatchRatio": 0.007490265609790016,
+          "runtimeMs": 5.37175
+        },
+        "threshold03": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 4.285458
+        }
+      },
+      "ssim": {
+        "mean": 0.998732365106366,
+        "runtimeMs": 49.085083
+      }
+    },
+    {
+      "id": "blur-sigma-1.0",
+      "class": "NOISE",
+      "label": "Gaussian blur sigma 1.0",
+      "file": "scripts/spike/out/noise-blur-sigma-1.0.png",
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 48694,
+          "mismatchRatio": 0.042321999721874566,
+          "runtimeMs": 9.644625
+        },
+        "threshold03": {
+          "mismatchPixels": 7787,
+          "mismatchRatio": 0.006768008621888472,
+          "runtimeMs": 5.504333
+        }
+      },
+      "ssim": {
+        "mean": 0.9911810328022821,
+        "runtimeMs": 55.235708
+      }
+    },
+    {
+      "id": "brightness-plus-2pct",
+      "class": "NOISE",
+      "label": "Global brightness +2%",
+      "file": "scripts/spike/out/noise-brightness-plus-2pct.png",
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 3.782458
+        },
+        "threshold03": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 3.670709
+        }
+      },
+      "ssim": {
+        "mean": 0.9965973438889881,
+        "runtimeMs": 47.805208
+      }
+    },
+    {
+      "id": "band-shift-y-24px",
+      "class": "DEFECT",
+      "label": "200px band shifted down 24px",
+      "file": "scripts/spike/out/defect-band-shift-y-24px.png",
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 70735,
+          "mismatchRatio": 0.06147875816993464,
+          "runtimeMs": 10.130375
+        },
+        "threshold03": {
+          "mismatchPixels": 42279,
+          "mismatchRatio": 0.03674645390070922,
+          "runtimeMs": 5.638584
+        }
+      },
+      "ssim": {
+        "mean": 0.794459572273726,
+        "runtimeMs": 49.667875
+      }
+    },
+    {
+      "id": "missing-button",
+      "class": "DEFECT",
+      "label": "Button-sized region removed",
+      "file": "scripts/spike/out/defect-missing-button.png",
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 26307,
+          "mismatchRatio": 0.022864518147684604,
+          "runtimeMs": 2.344125
+        },
+        "threshold03": {
+          "mismatchPixels": 26287,
+          "mismatchRatio": 0.02284713530802392,
+          "runtimeMs": 2.351708
+        }
+      },
+      "ssim": {
+        "mean": 0.9738226911036579,
+        "runtimeMs": 47.832125
+      }
+    },
+    {
+      "id": "hue-rotate-30deg",
+      "class": "DEFECT",
+      "label": "Whole image hue +30deg",
+      "file": "scripts/spike/out/defect-hue-rotate-30deg.png",
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 177382,
+          "mismatchRatio": 0.1541701432345988,
+          "runtimeMs": 24.207292
+        },
+        "threshold03": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 3.298375
+        }
+      },
+      "ssim": {
+        "mean": 0.9983224510247589,
+        "runtimeMs": 52.334917
+      }
+    },
+    {
+      "id": "text-area-scale-115pct",
+      "class": "DEFECT",
+      "label": "Text area scaled to 115%",
+      "file": "scripts/spike/out/defect-text-area-scale-115pct.png",
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 33694,
+          "mismatchRatio": 0.02928486997635934,
+          "runtimeMs": 4.62525
+        },
+        "threshold03": {
+          "mismatchPixels": 31610,
+          "mismatchRatio": 0.027473578083715755,
+          "runtimeMs": 4.0065
+        }
+      },
+      "ssim": {
+        "mean": 0.8397567364453032,
+        "runtimeMs": 51.522333
+      }
+    }
+  ],
+  "separability": {
+    "pixelmatchThreshold01": {
+      "direction": "higher-is-worse",
+      "worstNoise": {
+        "id": "blur-sigma-1.0",
+        "value": 0.042321999721874566
+      },
+      "bestDefect": {
+        "id": "missing-button",
+        "value": 0.022864518147684604
+      },
+      "gap": -0.01945748157418996,
+      "separates": false,
+      "candidateThreshold": null
+    },
+    "pixelmatchThreshold03": {
+      "direction": "higher-is-worse",
+      "worstNoise": {
+        "id": "translate-x-1px",
+        "value": 0.006805381727158949
+      },
+      "bestDefect": {
+        "id": "hue-rotate-30deg",
+        "value": 0
+      },
+      "gap": -0.006805381727158949,
+      "separates": false,
+      "candidateThreshold": null
+    },
+    "ssim": {
+      "direction": "lower-is-worse",
+      "worstNoise": {
+        "id": "translate-x-1px",
+        "value": 0.9704949846218931
+      },
+      "bestDefect": {
+        "id": "hue-rotate-30deg",
+        "value": 0.9983224510247589
+      },
+      "gap": -0.02782746640286582,
+      "separates": false,
+      "candidateThreshold": null
+    }
+  }
+}
