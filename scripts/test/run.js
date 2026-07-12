@@ -24,15 +24,9 @@ const hero = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'hero-nodes.json'), 
 const faq = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'faq-nodes.json'), 'utf8'));
 
 let passed = 0;
+const tests = [];
 function test(name, fn) {
-  try {
-    fn();
-    passed += 1;
-    console.log(`  ok  ${name}`);
-  } catch (error) {
-    console.error(`  FAIL ${name}\n       ${error.message}`);
-    process.exitCode = 1;
-  }
+  tests.push({ name, fn });
 }
 
 console.log('hotspot geometry');
@@ -322,4 +316,23 @@ test('validate-export rejects Figma provenance without semantic materials', () =
   }
 });
 
-console.log(`\n${passed} passed${process.exitCode ? ', with failures' : ''}`);
+require('./compare-score.test-block')({ assert, fixtures: FIXTURES, test });
+
+async function run() {
+  for (const item of tests) {
+    try {
+      await item.fn();
+      passed += 1;
+      console.log(`  ok  ${item.name}`);
+    } catch (error) {
+      console.error(`  FAIL ${item.name}\n       ${error.message}`);
+      process.exitCode = 1;
+    }
+  }
+  console.log(`\n${passed} passed${process.exitCode ? ', with failures' : ''}`);
+}
+
+run().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

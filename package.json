@@ -16,6 +16,7 @@
     "new": "bash scripts/new-section.sh",
     "fonts": "node scripts/generate-fonts-css.js",
     "compare": "node scripts/compare-ref.js",
+    "compare:score": "node scripts/compare-score.js",
     "validate": "node scripts/validate-export.js",
     "handoff": "node scripts/handoff.js",
     "infer": "node scripts/infer-section-name.js",
@@ -31,6 +32,7 @@
   "devDependencies": {
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0",
+    "puppeteer-core": "^24.43.1",
     "ssim.js": "^3.5.0"
   }
 }

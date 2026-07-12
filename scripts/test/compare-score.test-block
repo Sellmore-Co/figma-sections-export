@@ -1,0 +1,104 @@
+const fs = require('fs');
+const path = require('path');
+
+const { parseArgs } = require('../compare-score');
+const { resolveSectionCapture, resolveSectionIndex } = require('../lib/compare-shared');
+const { evaluateThreshold, scorePair } = require('../lib/score');
+
+module.exports = ({ assert, fixtures, test }) => {
+  const reference = path.join(fixtures, 'score-reference.png');
+  const identical = path.join(fixtures, 'score-identical.png');
+  const defect = path.join(fixtures, 'score-defect.png');
+  const dimensionMismatch = path.join(fixtures, 'score-dimension-mismatch.png');
+  const sectionCaptureRoot = path.join(fixtures, 'section-capture');
+  const sectionCaptureSrc = path.join(sectionCaptureRoot, 'src', 'fake');
+  const sectionCapturePage = path.join(sectionCaptureSrc, 'landing.html');
+  const sectionCaptureIncludes = path.join(sectionCaptureSrc, '_includes');
+
+  console.log('compare score');
+  test('identical PNGs score zero', async () => {
+    const result = await scorePair(reference, fs.readFileSync(identical));
+    assert.strictEqual(result.score, 0);
+    assert.strictEqual(result.dimensionsMatch, true);
+    assert.deepStrictEqual(result.topRegions, []);
+  });
+
+  test('defect scores above zero and localizes the correct grid cell', async () => {
+    const result = await scorePair(reference, defect);
+    assert.ok(result.score > 0);
+    assert.strictEqual(result.topRegions[0].row, 8);
+    assert.strictEqual(result.topRegions[0].column, 4);
+    assert.deepStrictEqual(result.topRegions[0].bounds, { x: 42, y: 42, width: 11, height: 6 });
+    assert.strictEqual(result.topRegions[0].mismatchRatio, 1);
+  });
+
+  test('dimension mismatch trips the independent dimension gate', async () => {
+    const result = await scorePair(reference, dimensionMismatch);
+    assert.strictEqual(result.dimensionsMatch, false);
+    assert.deepStrictEqual(result.dimensionDelta, { width: 4, height: 0 });
+  });
+
+  test('threshold flag parses and flips aggregate pass/fail', async () => {
+    const parsed = parseArgs(['campaign', '--threshold', '0.01']);
+    assert.strictEqual(parsed.threshold, 0.01);
+
+    const identicalResult = await scorePair(reference, identical);
+    const defectResult = await scorePair(reference, defect);
+    assert.strictEqual(evaluateThreshold([identicalResult], parsed.threshold), true);
+    assert.strictEqual(evaluateThreshold([defectResult], defectResult.score), false);
+    assert.strictEqual(evaluateThreshold([identicalResult], null), null);
+  });
+
+  test('capture flags parse selector and full-page escape hatches', () => {
+    const selected = parseArgs(['campaign', 'hero-1', '--selector', '[data-hero]']);
+    assert.strictEqual(selected.selector, '[data-hero]');
+    assert.strictEqual(selected.fullPage, false);
+
+    const fullPage = parseArgs(['campaign', 'hero-1', '--full-page']);
+    assert.strictEqual(fullPage.selector, null);
+    assert.strictEqual(fullPage.fullPage, true);
+
+    assert.match(parseArgs(['campaign', '--selector']).error, /Missing value/);
+    assert.match(parseArgs(['campaign', '--selector', '#hero', '--full-page']).error, /cannot be used together/);
+  });
+
+  test('section indexes follow include order and ignore zero-section partials', () => {
+    const expectedIndexes = {
+      alpha: 0,
+      spacer: 1,
+      beta: 1,
+      gamma: 3,
+    };
+
+    for (const [section, expectedIndex] of Object.entries(expectedIndexes)) {
+      const resolution = resolveSectionIndex({
+        pagePath: sectionCapturePage,
+        includesDir: sectionCaptureIncludes,
+        section,
+      });
+      assert.deepStrictEqual(resolution, { index: expectedIndex, reason: null });
+    }
+  });
+
+  test('section capture uses landing page and falls back when section is absent', () => {
+    const beta = resolveSectionCapture({
+      slug: 'fake',
+      section: 'beta',
+      projectRoot: sectionCaptureRoot,
+    });
+    assert.strictEqual(beta.entryUrl, 'landing.html');
+    assert.strictEqual(beta.pagePath, sectionCapturePage);
+    assert.strictEqual(beta.sectionIndex, 1);
+    assert.strictEqual(beta.warning, null);
+
+    const absent = resolveSectionCapture({
+      slug: 'fake',
+      section: 'absent',
+      projectRoot: sectionCaptureRoot,
+    });
+    assert.strictEqual(absent.entryUrl, 'presell.html');
+    assert.strictEqual(absent.sectionIndex, null);
+    assert.match(absent.warning, /not found in the campaign_include sequence/);
+    assert.match(absent.warning, /Falling back to full-page capture/);
+  });
+};

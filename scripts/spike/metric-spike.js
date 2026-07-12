@@ -2,11 +2,13 @@
 
 const fs = require('fs');
 const path = require('path');
-const sharp = require('sharp');
-const { PNG } = require('pngjs');
-const { ssim } = require('ssim.js');
+const {
+  normalizePair,
+  pixelmatchScore,
+  readDimensions,
+  ssimScore,
+} = require('../lib/score');
 
-let pixelmatch;
 const ROOT = path.join(__dirname, '..', '..');
 const GOLDEN = path.join(ROOT, 'src', 'shield', '_ref', 'hero-4-desktop.png');
 const OUT_DIR = path.join(__dirname, 'out');
@@ -25,68 +27,6 @@ const COMPARISONS = [
   { id: 'extra-right-strip-100px', class: 'DEFECT', file: 'defect-extra-right-strip-100px.png', label: 'Extra 100px right-side canvas strip' },
   { id: 'text-area-scale-115pct', class: 'DEFECT', file: 'defect-text-area-scale-115pct.png', label: 'Text area scaled to 115%' },
 ];
-
-function elapsedMs(start) {
-  return Number(process.hrtime.bigint() - start) / 1e6;
-}
-
-function timed(fn) {
-  const start = process.hrtime.bigint();
-  const value = fn();
-  return { value, runtimeMs: elapsedMs(start) };
-}
-
-async function readDimensions(file) {
-  const metadata = await sharp(file).metadata();
-  if (!metadata.width || !metadata.height) throw new Error(`Could not read dimensions: ${file}`);
-  return { width: metadata.width, height: metadata.height };
-}
-
-async function padPng(file, dimensions, targetWidth, targetHeight) {
-  const buffer = await sharp(file)
-    .flatten({ background: '#ffffff' })
-    .extend({
-      right: targetWidth - dimensions.width,
-      bottom: targetHeight - dimensions.height,
-      background: { r: 255, g: 255, b: 255, alpha: 1 },
-    })
-    .png()
-    .toBuffer();
-  return PNG.sync.read(buffer);
-}
-
-async function normalizePair(goldenFile, candidateFile) {
-  const goldenDimensions = await readDimensions(goldenFile);
-  const candidateDimensions = await readDimensions(candidateFile);
-  const width = Math.max(goldenDimensions.width, candidateDimensions.width);
-  const height = Math.max(goldenDimensions.height, candidateDimensions.height);
-  return {
-    golden: await padPng(goldenFile, goldenDimensions, width, height),
-    candidate: await padPng(candidateFile, candidateDimensions, width, height),
-    goldenDimensions,
-    candidateDimensions,
-    normalizedCanvas: { width, height },
-  };
-}
-
-function pixelmatchScore(golden, candidate, threshold) {
-  const measurement = timed(() =>
-    pixelmatch(golden.data, candidate.data, null, golden.width, golden.height, { threshold }),
-  );
-  return {
-    mismatchPixels: measurement.value,
-    mismatchRatio: measurement.value / (golden.width * golden.height),
-    runtimeMs: measurement.runtimeMs,
-  };
-}
-
-function ssimScore(golden, candidate) {
-  const measurement = timed(() => ssim(golden, candidate));
-  return {
-    mean: measurement.value.mssim,
-    runtimeMs: measurement.runtimeMs,
-  };
-}
 
 function separability(rows, selector, direction) {
   const noise = rows.filter((row) => row.class === 'NOISE');
@@ -149,7 +89,6 @@ The synthetic edge-AA noise model has a free \`strength\` parameter, and the sep
 }
 
 async function main() {
-  ({ default: pixelmatch } = await import('pixelmatch'));
   if (!fs.existsSync(GOLDEN)) throw new Error(`Golden frame is missing: ${path.relative(ROOT, GOLDEN)}`);
   for (const comparison of COMPARISONS.filter((item) => item.file)) {
     const file = path.join(OUT_DIR, comparison.file);
@@ -158,17 +97,18 @@ async function main() {
     }
   }
 
-  const metadata = await sharp(GOLDEN).metadata();
-  const width = metadata.width;
-  const height = metadata.height;
-  if (!width || !height) throw new Error('Could not read golden-frame dimensions.');
+  const golden = await readDimensions(GOLDEN);
+  const width = golden.width;
+  const height = golden.height;
   const comparisons = [];
 
   for (const comparison of COMPARISONS) {
     const file = comparison.file ? path.join(OUT_DIR, comparison.file) : GOLDEN;
     const normalized = await normalizePair(GOLDEN, file);
-    const dimensionsMatch = normalized.goldenDimensions.width === normalized.candidateDimensions.width
-      && normalized.goldenDimensions.height === normalized.candidateDimensions.height;
+    const dimensionsMatch = normalized.referenceDimensions.width === normalized.candidateDimensions.width
+      && normalized.referenceDimensions.height === normalized.candidateDimensions.height;
+    const threshold01 = await pixelmatchScore(normalized.reference, normalized.candidate, 0.1);
+    const threshold03 = await pixelmatchScore(normalized.reference, normalized.candidate, 0.3);
     const row = {
       id: comparison.id,
       class: comparison.class,
@@ -176,19 +116,19 @@ async function main() {
       file: comparison.file ? path.relative(ROOT, file) : path.relative(ROOT, GOLDEN),
       dimensionsMatch,
       dimensionDelta: {
-        width: normalized.candidateDimensions.width - normalized.goldenDimensions.width,
-        height: normalized.candidateDimensions.height - normalized.goldenDimensions.height,
+        width: normalized.candidateDimensions.width - normalized.referenceDimensions.width,
+        height: normalized.candidateDimensions.height - normalized.referenceDimensions.height,
       },
       dimensions: {
-        golden: normalized.goldenDimensions,
+        golden: normalized.referenceDimensions,
         candidate: normalized.candidateDimensions,
         normalizedCanvas: normalized.normalizedCanvas,
       },
       pixelmatch: {
-        threshold01: pixelmatchScore(normalized.golden, normalized.candidate, 0.1),
-        threshold03: pixelmatchScore(normalized.golden, normalized.candidate, 0.3),
+        threshold01,
+        threshold03,
       },
-      ssim: ssimScore(normalized.golden, normalized.candidate),
+      ssim: ssimScore(normalized.reference, normalized.candidate),
     };
     comparisons.push(row);
     console.log(`  scored ${comparison.class.padEnd(7)} ${comparison.id}`);

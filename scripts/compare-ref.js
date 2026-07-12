@@ -35,11 +35,18 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const { exec } = require('child_process');
+const {
+  BREAKPOINTS,
+  PROJECT_ROOT,
+  buildLiveUrl,
+  parseComparisonPositionals,
+  resolveReferenceSection,
+} = require('./lib/compare-shared');
 
 const rawArgs = process.argv.slice(2);
 const flags = rawArgs.filter((a) => a.startsWith('--'));
 const positional = rawArgs.filter((a) => !a.startsWith('--'));
-const [slug, arg2, arg3] = positional;
+const { slug, explicitSection, port, invalidPort } = parseComparisonPositionals(positional);
 
 const serve = flags.includes('--serve');
 const servePortFlag = flags.find((f) => f.startsWith('--serve-port='));
@@ -55,25 +62,12 @@ if (!slug) {
   process.exit(1);
 }
 
-let explicitSection = null;
-let port = 3000;
-
-if (arg2 !== undefined) {
-  if (/^\d+$/.test(arg2)) {
-    port = parseInt(arg2, 10);
-  } else {
-    explicitSection = arg2;
-    if (arg3 !== undefined) {
-      if (!/^\d+$/.test(arg3)) {
-        console.error(`Invalid port "${arg3}" — must be a number.`);
-        process.exit(1);
-      }
-      port = parseInt(arg3, 10);
-    }
-  }
+if (invalidPort !== null) {
+  console.error(`Invalid port "${invalidPort}" — must be a number.`);
+  process.exit(1);
 }
 
-const srcDir = path.join(__dirname, '..', 'src', slug);
+const srcDir = path.join(PROJECT_ROOT, 'src', slug);
 const refDir = path.join(srcDir, '_ref');
 
 if (!fs.existsSync(srcDir)) {
@@ -85,40 +79,15 @@ const liveUrl = buildLiveUrl(port, slug);
 
 fs.mkdirSync(refDir, { recursive: true });
 
-const existingFiles = fs.readdirSync(refDir);
-const prefixes = listDesktopPrefixes(existingFiles);
-
-let sectionName;
-
-if (explicitSection) {
-  const desktopPath = path.join(refDir, `${explicitSection}-desktop.png`);
-  if (!fs.existsSync(desktopPath)) {
-    console.error(
-      `No Figma ref for section "${explicitSection}": expected src/${slug}/_ref/${explicitSection}-desktop.png`
-    );
-    if (prefixes.length) {
-      console.error(`Available ref prefixes: ${prefixes.join(', ')}`);
-    } else {
-      console.error('No *-desktop.png files in _ref/ — run save-ref.sh first.');
-    }
-    process.exit(1);
-  }
-  sectionName = explicitSection;
-} else {
-  if (prefixes.length > 1) {
-    console.warn(
-      `Warning: multiple *-desktop.png ref sets in _ref/ (${prefixes.join(', ')}). Using "${prefixes[0]}". ` +
-        `Pass an explicit section: npm run compare ${slug} <section>`
-    );
-  }
-  sectionName = prefixes[0] || null;
+const resolution = resolveReferenceSection({ refDir, explicitSection, slug });
+if (resolution.errors.length) {
+  resolution.errors.forEach((message) => console.error(message));
+  process.exit(1);
 }
+if (resolution.warning) console.warn(resolution.warning);
+const sectionName = resolution.sectionName;
 
-const breakpoints = [
-  { name: 'desktop', width: 1440 },
-  { name: 'tablet', width: 768 },
-  { name: 'mobile', width: 375 },
-];
+const breakpoints = BREAKPOINTS;
 
 const panels = breakpoints.map((bp) => ({
   ...bp,
@@ -196,39 +165,6 @@ function startServer(rootDir, port, htmlFile, attempt = 0) {
     console.log(`  (Ctrl+C to stop)`);
     exec(`open "${url}"`, () => {});
   });
-}
-
-function listDesktopPrefixes(files) {
-  const out = files
-    .filter((f) => f.endsWith('-desktop.png') && !f.startsWith('rendered-'))
-    .map((f) => f.replace(/-desktop\.png$/, ''));
-  return [...new Set(out)].sort();
-}
-
-function buildLiveUrl(port, slug) {
-  const entryUrl = getCampaignEntryUrl(slug);
-  return `http://localhost:${port}/${slug}/${normalizeEntryUrl(entryUrl)}`;
-}
-
-function getCampaignEntryUrl(slug) {
-  const campaignsPath = path.join(__dirname, '..', '_data', 'campaigns.json');
-  if (!fs.existsSync(campaignsPath)) return '';
-
-  try {
-    const campaigns = JSON.parse(fs.readFileSync(campaignsPath, 'utf8'));
-    return campaigns?.[slug]?.entry_url || '';
-  } catch {
-    return '';
-  }
-}
-
-function normalizeEntryUrl(entryUrl) {
-  if (typeof entryUrl !== 'string') return '';
-  const trimmed = entryUrl
-    .trim()
-    .replace(/^\/+|\/+$/g, '')
-    .replace(/\.html$/i, '');
-  return trimmed ? `${trimmed}/` : '';
 }
 
 function generateHtml(slug, sectionName, liveUrl, panels) {
