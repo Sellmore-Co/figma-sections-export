@@ -29,6 +29,52 @@ function gaussianKernel(sigma) {
   return { width, height: width, kernel: kernel.map((weight) => weight / sum) };
 }
 
+async function localizedEdgeBlur(sigma, strength) {
+  const source = sharp(GOLDEN).flatten({ background: '#ffffff' }).ensureAlpha();
+  const { data: original, info } = await source.clone().raw().toBuffer({ resolveWithObject: true });
+  const blurred = await source.clone().convolve(gaussianKernel(sigma)).raw().toBuffer();
+  const luminance = new Uint8Array(info.width * info.height);
+  const edge = new Uint8Array(info.width * info.height);
+  const radius = 2;
+
+  for (let index = 0; index < luminance.length; index += 1) {
+    const offset = index * info.channels;
+    luminance[index] = Math.round(
+      original[offset] * 0.2126 + original[offset + 1] * 0.7152 + original[offset + 2] * 0.0722,
+    );
+  }
+
+  // Browser font/AA differences alter coverage near high-contrast vector edges;
+  // they do not soften the entire screenshot. Detect those edges with a simple
+  // central-difference gradient, then expand the mask by two pixels.
+  for (let y = 1; y < info.height - 1; y += 1) {
+    for (let x = 1; x < info.width - 1; x += 1) {
+      const index = y * info.width + x;
+      const gradientX = Math.abs(luminance[index + 1] - luminance[index - 1]);
+      const gradientY = Math.abs(luminance[index + info.width] - luminance[index - info.width]);
+      if (Math.max(gradientX, gradientY) < 48) continue;
+      for (let maskY = Math.max(0, y - radius); maskY <= Math.min(info.height - 1, y + radius); maskY += 1) {
+        for (let maskX = Math.max(0, x - radius); maskX <= Math.min(info.width - 1, x + radius); maskX += 1) {
+          edge[maskY * info.width + maskX] = 1;
+        }
+      }
+    }
+  }
+
+  const output = Buffer.from(original);
+  for (let index = 0; index < edge.length; index += 1) {
+    if (!edge[index]) continue;
+    const offset = index * info.channels;
+    for (let channel = 0; channel < 3; channel += 1) {
+      output[offset + channel] = Math.round(
+        original[offset + channel] * (1 - strength) + blurred[offset + channel] * strength,
+      );
+    }
+  }
+
+  return sharp(output, { raw: info });
+}
+
 async function main() {
   if (!fs.existsSync(GOLDEN)) {
     throw new Error(`Golden frame is missing: ${path.relative(ROOT, GOLDEN)}`);
@@ -45,10 +91,11 @@ async function main() {
       .extract({ left: 0, top: 0, width: width - 1, height })
       .extend({ left: 1, background: { r: 255, g: 255, b: 255, alpha: 1 } }),
   );
-  // Use explicit Gaussian kernels because libvips treats sigma 0.5 as a no-op
-  // on this input. The normalized kernels preserve the requested sigma values.
-  await write('noise-blur-sigma-0.5', sharp(GOLDEN).convolve(gaussianKernel(0.5)));
-  await write('noise-blur-sigma-1.0', sharp(GOLDEN).convolve(gaussianKernel(1)));
+  // Use explicit Gaussian kernels because libvips treats sigma 0.5 as a no-op.
+  // Both perturbations are restricted to a 2px high-contrast edge mask so
+  // photographs and flat backgrounds remain untouched away from their edges.
+  await write('noise-text-edge-aa-mild', await localizedEdgeBlur(0.5, 0.65));
+  await write('noise-text-edge-aa-strong', await localizedEdgeBlur(1, 0.45));
   await write('noise-brightness-plus-2pct', sharp(GOLDEN).modulate({ brightness: 1.02 }));
 
   // Defect: layout/content/color changes that an accuracy harness must catch.
@@ -98,6 +145,14 @@ async function main() {
 
   await write('defect-hue-rotate-30deg', sharp(GOLDEN).modulate({ hue: 30 }));
 
+  await write(
+    'defect-extra-right-strip-100px',
+    sharp(GOLDEN).extend({
+      right: 100,
+      background: { r: 224, g: 224, b: 224, alpha: 1 },
+    }),
+  );
+
   const textArea = { left: 720, top: 90, width: 680, height: 340 };
   const scaledTextArea = await sharp(GOLDEN)
     .extract(textArea)
@@ -115,7 +170,7 @@ async function main() {
     sharp(GOLDEN).composite([{ input: scaledTextArea, left: textArea.left, top: textArea.top }]),
   );
 
-  console.log(`\nGenerated 8 deterministic perturbations from ${path.relative(ROOT, GOLDEN)}.`);
+  console.log(`\nGenerated 9 deterministic perturbations from ${path.relative(ROOT, GOLDEN)}.`);
 }
 
 main().catch((error) => {
