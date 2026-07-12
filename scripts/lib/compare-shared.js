@@ -93,12 +93,14 @@ function normalizeEntryUrl(entryUrl) {
 function stripMarkupComments(source) {
   return source
     .replace(/<!--[^]*?-->/g, '')
-    .replace(/{%\s*comment\s*%}[^]*?{%\s*endcomment\s*%}/g, '');
+    .replace(/{%-?\s*comment\s*-?%}[^]*?{%-?\s*endcomment\s*-?%}/g, '');
 }
+
+const INCLUDE_PATTERN = /{%-?\s*campaign_include\s+(['"])([^'"]+)\1\s*-?%}/g;
 
 function extractCampaignIncludes(source) {
   const includes = [];
-  const includePattern = /{%\s*campaign_include\s+(['"])([^'"]+)\1\s*%}/g;
+  const includePattern = new RegExp(INCLUDE_PATTERN.source, 'g');
   let match;
   const uncommentedSource = stripMarkupComments(source);
   while ((match = includePattern.exec(uncommentedSource)) !== null) {
@@ -137,46 +139,60 @@ function resolveSectionIndex({ pagePath, includesDir, section }) {
   // Work on comment-stripped source throughout so commented-out includes and
   // sections never desynchronize include positions from literal-section counts.
   const pageSource = stripMarkupComments(fs.readFileSync(pagePath, 'utf8'));
-  const includes = extractCampaignIncludes(pageSource);
   const targetInclude = `landing/${section}.html`;
-  const targetPosition = includes.indexOf(targetInclude);
-  if (targetPosition === -1) {
-    return {
-      index: null,
-      reason: `section "${section}" was not found in the campaign_include sequence in ${pagePath}`,
-    };
-  }
 
-  // The target partial must itself contribute a root <section>; otherwise the
-  // computed index would silently capture the FOLLOWING section.
+  // The target partial must contribute exactly one root <section>: zero would
+  // silently capture the FOLLOWING section; more than one cannot be scoped to
+  // a single element screenshot.
   const targetPath = path.join(includesDir, targetInclude);
   if (!fs.existsSync(targetPath)) {
     return { index: null, reason: `target partial not found: ${targetPath}` };
   }
-  if (countRootSections(fs.readFileSync(targetPath, 'utf8')) < 1) {
+  const targetRootSections = countRootSections(fs.readFileSync(targetPath, 'utf8'));
+  if (targetRootSections !== 1) {
     return {
       index: null,
-      reason: `target partial ${targetInclude} has no root <section> element; use --selector to scope it`,
+      reason: `target partial ${targetInclude} has ${targetRootSections} root <section> elements (need exactly 1); use --selector to scope it`,
     };
   }
 
-  // Literal <section> elements written directly in the page source before the
-  // target include also occupy top-level slots in the rendered DOM.
-  const includePattern = /{%\s*campaign_include\s+(['"])([^'"]+)\1\s*%}/g;
-  let literalPrefix = '';
-  let seen = 0;
+  // Walk section tags and includes in document order, tracking literal
+  // <section> nesting depth so that (a) a target include nested inside a
+  // literal section is rejected (capture only selects top-level sections),
+  // (b) includes rendered inside a literal section contribute no top-level
+  // slots, and (c) depth-0 literal sections before the target count as slots.
+  // NOTE: written out literally (not composed from INCLUDE_PATTERN) because
+  // the quote backreference must be renumbered for the combined group order.
+  const tokenPattern = /<\s*(\/?)\s*section\b[^>]*>|{%-?\s*campaign_include\s+(['"])([^'"]+)\2\s*-?%}/gi;
+  let depth = 0;
+  let index = 0;
   let match;
-  while ((match = includePattern.exec(pageSource)) !== null) {
-    if (seen === targetPosition) {
-      literalPrefix = pageSource.slice(0, match.index);
-      break;
-    }
-    seen += 1;
-  }
-  let index = countRootSections(literalPrefix);
 
-  for (const include of includes.slice(0, targetPosition)) {
-    const partialPath = path.join(includesDir, include);
+  while ((match = tokenPattern.exec(pageSource)) !== null) {
+    if (match[0].startsWith('<')) {
+      const isClosing = Boolean(match[1]);
+      if (isClosing) {
+        depth = Math.max(0, depth - 1);
+      } else {
+        if (depth === 0) index += 1;
+        if (!/\/\s*>$/.test(match[0])) depth += 1;
+      }
+      continue;
+    }
+
+    const includeName = match[3].trim().replace(/^\/+/, '');
+    if (includeName === targetInclude) {
+      if (depth > 0) {
+        return {
+          index: null,
+          reason: `section "${section}" is included inside a literal <section> in ${pagePath}; use --selector to scope it`,
+        };
+      }
+      return { index, reason: null };
+    }
+
+    if (depth > 0) continue;
+    const partialPath = path.join(includesDir, includeName);
     if (!fs.existsSync(partialPath)) {
       return {
         index: null,
@@ -186,7 +202,10 @@ function resolveSectionIndex({ pagePath, includesDir, section }) {
     index += countRootSections(fs.readFileSync(partialPath, 'utf8'));
   }
 
-  return { index, reason: null };
+  return {
+    index: null,
+    reason: `section "${section}" was not found in the campaign_include sequence in ${pagePath}`,
+  };
 }
 
 function entryUrlToSourcePath(srcDir, entryUrl) {

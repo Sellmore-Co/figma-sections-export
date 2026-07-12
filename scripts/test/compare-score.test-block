@@ -75,7 +75,6 @@ module.exports = ({ assert, fixtures, test }) => {
   test('section indexes follow include order and ignore zero-section partials', () => {
     const expectedIndexes = {
       alpha: 0,
-      beta: 1,
       gamma: 3,
     };
 
@@ -96,7 +95,34 @@ module.exports = ({ assert, fixtures, test }) => {
       section: 'spacer',
     });
     assert.strictEqual(resolution.index, null);
-    assert.match(resolution.reason, /no root <section>/);
+    assert.match(resolution.reason, /has 0 root <section> elements/);
+  });
+
+  test('multi-root target partial fails resolution (single element cannot scope it)', () => {
+    const resolution = resolveSectionIndex({
+      pagePath: sectionCapturePage,
+      includesDir: sectionCaptureIncludes,
+      section: 'beta',
+    });
+    assert.strictEqual(resolution.index, null);
+    assert.match(resolution.reason, /has 2 root <section> elements/);
+  });
+
+  test('target include nested inside a literal section is rejected', () => {
+    const nestedPage = path.join(sectionCaptureSrc, 'landing-nested.html');
+    const resolution = resolveSectionIndex({
+      pagePath: nestedPage,
+      includesDir: sectionCaptureIncludes,
+      section: 'alpha',
+    });
+    assert.strictEqual(resolution.index, null);
+    assert.match(resolution.reason, /included inside a literal <section>/);
+    const gamma = resolveSectionIndex({
+      pagePath: nestedPage,
+      includesDir: sectionCaptureIncludes,
+      section: 'gamma',
+    });
+    assert.deepStrictEqual(gamma, { index: 1, reason: null });
   });
 
   test('literal page-level sections before the include shift the index', () => {
@@ -107,24 +133,24 @@ module.exports = ({ assert, fixtures, test }) => {
       section: 'alpha',
     });
     assert.deepStrictEqual(alpha, { index: 1, reason: null });
-    const beta = resolveSectionIndex({
+    const gamma = resolveSectionIndex({
       pagePath: literalPage,
       includesDir: sectionCaptureIncludes,
-      section: 'beta',
+      section: 'gamma',
     });
-    assert.deepStrictEqual(beta, { index: 2, reason: null });
+    assert.deepStrictEqual(gamma, { index: 2, reason: null });
   });
 
   test('section capture uses landing page and falls back when section is absent', () => {
-    const beta = resolveSectionCapture({
+    const gamma = resolveSectionCapture({
       slug: 'fake',
-      section: 'beta',
+      section: 'gamma',
       projectRoot: sectionCaptureRoot,
     });
-    assert.strictEqual(beta.entryUrl, 'landing.html');
-    assert.strictEqual(beta.pagePath, sectionCapturePage);
-    assert.strictEqual(beta.sectionIndex, 1);
-    assert.strictEqual(beta.warning, null);
+    assert.strictEqual(gamma.entryUrl, 'landing.html');
+    assert.strictEqual(gamma.pagePath, sectionCapturePage);
+    assert.strictEqual(gamma.sectionIndex, 3);
+    assert.strictEqual(gamma.warning, null);
 
     const absent = resolveSectionCapture({
       slug: 'fake',
@@ -133,7 +159,7 @@ module.exports = ({ assert, fixtures, test }) => {
     });
     assert.strictEqual(absent.entryUrl, 'presell.html');
     assert.strictEqual(absent.sectionIndex, null);
-    assert.match(absent.warning, /not found in the campaign_include sequence/);
+    assert.match(absent.warning, /target partial not found/);
     assert.match(absent.warning, /Falling back to full-page capture/);
   });
 };
