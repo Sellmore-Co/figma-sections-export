@@ -147,14 +147,22 @@ function resetLedger(file, previous, now = new Date().toISOString()) {
 // the error message tells the human exactly what to remove. Release is only
 // ever called by the process that acquired (single code path), so ownership
 // tokens are unnecessary.
-function acquireLock(file, now = Date.now()) {
+function acquireLock(file, now = Date.now(), retried = false) {
   try { fs.mkdirSync(file); return; } catch (error) {
     if (error.code !== 'EEXIST') throw error;
   }
-  const age = now - fs.statSync(file).mtimeMs;
+  let stat;
+  try { stat = fs.statSync(file); } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    // The holder released between our EEXIST and the stat — re-contend once.
+    if (retried) throw new Error('another compare:score run holds the lock');
+    return acquireLock(file, now, true);
+  }
+  const removeHint = stat.isDirectory() ? `rmdir "${file}"` : `rm "${file}"`;
+  const age = now - stat.mtimeMs;
   if (age <= STALE_LOCK_MS) throw new Error('another compare:score run holds the lock');
   throw new Error(
-    `stale compare:score lock (older than 10 minutes): ${file} — if no other run is active, remove it with: rmdir "${file}"`,
+    `stale compare:score lock (older than 10 minutes): ${file} — if no other run is active, remove it with: ${removeHint}`,
   );
 }
 
