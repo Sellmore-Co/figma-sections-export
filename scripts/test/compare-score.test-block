@@ -181,16 +181,46 @@ module.exports = ({ assert, fixtures, test }) => {
   test('lock rejects concurrency and steals locks older than ten minutes', () => {
     const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'score-lock-'));
     const lock = path.join(tmpDir, 'loop.lock');
-    acquireLock(lock);
+    const first = acquireLock(lock);
     assert.throws(() => acquireLock(lock), /another compare:score run holds the lock/);
     const old = new Date(Date.now() - 11 * 60 * 1000);
     fs.utimesSync(lock, old, old);
     const warnings = [];
-    acquireLock(lock, Date.now(), (message) => warnings.push(message));
+    const stealer = acquireLock(lock, Date.now(), (message) => warnings.push(message));
     assert.match(warnings[0], /stealing stale/);
-    releaseLock(lock);
+    // Ownership: the original holder's release must NOT remove the stealer's lock.
+    releaseLock(lock, first);
+    assert.strictEqual(fs.existsSync(lock), true);
+    releaseLock(lock, stealer);
     assert.strictEqual(fs.existsSync(lock), false);
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('resetting before a hard stop still records an audit trace', () => {
+    const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'reset-trace-'));
+    const ledgerPath = path.join(tmpDir, 'loop.json');
+    const ledger = appendEntry(null, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }), limits, identity);
+    writeLedger(ledgerPath, ledger);
+    const resets = resetLedger(ledgerPath, ledger, '2026-01-02T00:00:00.000Z');
+    assert.strictEqual(resets.length, 1);
+    assert.match(resets[0].previousStopReason, /reset before a hard stop/);
+    assert.strictEqual(resets[0].previousIterations, 1);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('loop limit flags require --loop so resets cannot outrun validation', () => {
+    assert.match(parseArgs(['campaign', '--reset-loop', '--min-delta', '0']).error, /require --loop/);
+    assert.match(parseArgs(['campaign', '--max-iterations', '3']).error, /require --loop/);
+  });
+
+  test('null-threshold loop entries still hit the max-iterations stop', () => {
+    let ledger = null;
+    for (let i = 0; i < limits.maxIterations; i += 1) {
+      ledger = appendEntry(ledger, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }, null), limits, identity);
+    }
+    const inspection = inspectLoop(ledger, limits, null);
+    assert.strictEqual(inspection.exitCode, 2);
+    assert.match(inspection.stopReason, /max iterations/);
   });
 
   test('capture flags parse selector and full-page escape hatches', () => {

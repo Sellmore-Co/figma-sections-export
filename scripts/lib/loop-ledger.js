@@ -128,23 +128,48 @@ function writeLedger(file, ledger) {
 
 function resetLedger(file, previous, now = new Date().toISOString()) {
   const resets = Array.isArray(previous?.resets) ? [...previous.resets] : [];
-  if (previous?.stopReason) resets.push({ at: now, previousStopReason: previous.stopReason, previousIterations: previous.entries.length });
+  // Every reset of a ledger that had iterations is recorded — resetting BEFORE
+  // a hard stop fires must leave the same audit trail as resetting after one.
+  if (previous && previous.entries.length > 0) {
+    resets.push({
+      at: now,
+      previousStopReason: previous.stopReason || 'none (reset before a hard stop fired)',
+      previousIterations: previous.entries.length,
+    });
+  }
   if (fs.existsSync(file)) fs.unlinkSync(file);
   return resets;
 }
 
+function lockToken() {
+  return `${process.pid}-${process.hrtime.bigint()}`;
+}
+
 function acquireLock(file, now = Date.now(), warn = console.warn) {
-  try { fs.writeFileSync(file, `${process.pid}\n`, { flag: 'wx' }); return; } catch (error) {
+  const token = lockToken();
+  try { fs.writeFileSync(file, `${token}\n`, { flag: 'wx' }); return token; } catch (error) {
     if (error.code !== 'EEXIST') throw error;
   }
   const age = now - fs.statSync(file).mtimeMs;
   if (age <= STALE_LOCK_MS) throw new Error('another compare:score run holds the lock');
   warn('WARNING: stealing stale compare:score lock older than 10 minutes.');
-  fs.unlinkSync(file);
-  fs.writeFileSync(file, `${process.pid}\n`, { flag: 'wx' });
+  // Rename is the takeover claim: of N concurrent stealers only one rename
+  // succeeds; the losers see ENOENT and must re-contend via wx below.
+  try { fs.renameSync(file, `${file}.stale-${token}`); fs.unlinkSync(`${file}.stale-${token}`); } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  fs.writeFileSync(file, `${token}\n`, { flag: 'wx' });
+  return token;
 }
 
-function releaseLock(file) { try { fs.unlinkSync(file); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
+function releaseLock(file, token) {
+  // Only remove a lock we own: after a stale steal, the original process must
+  // not delete the stealer's lock and admit a third writer.
+  try {
+    if (token !== undefined && fs.readFileSync(file, 'utf8').trim() !== token) return;
+    fs.unlinkSync(file);
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+}
 
 module.exports = {
   CorruptStateError, DEFAULT_MAX_ITERATIONS, DEFAULT_MIN_DELTA, MAX_ITERATIONS, MIN_LOOP_DELTA,

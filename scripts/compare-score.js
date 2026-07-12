@@ -85,9 +85,14 @@ function parseArgs(rawArgs) {
   if (selector && fullPage) {
     return { error: '--selector and --full-page cannot be used together.' };
   }
+  // Loop limits only mean anything with --loop; accepting them elsewhere let
+  // "--reset-loop --min-delta 0" destroy a stopped ledger before validation
+  // rejected the value. Validate everything before any side effect can occur.
+  if ((maxIterations !== null || minDelta !== null) && !loop) {
+    return { error: '--max-iterations and --min-delta require --loop.' };
+  }
   if (maxIterations !== null && (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > MAX_ITERATIONS)) return { error: '--max-iterations must be an integer from 1 to 25.' };
-  if (minDelta !== null && (!Number.isFinite(minDelta) || minDelta < 0 || minDelta > 1)) return { error: '--min-delta must be a ratio from 0 to 1.' };
-  if (loop && minDelta !== null && minDelta < MIN_LOOP_DELTA) return { error: '--min-delta must be at least 0.005 in loop mode; the stagnation stop cannot be disabled.' };
+  if (minDelta !== null && (!Number.isFinite(minDelta) || minDelta < MIN_LOOP_DELTA || minDelta > 1)) return { error: '--min-delta must be a ratio from 0.005 to 1; the stagnation stop cannot be disabled.' };
 
   return {
     ...parseComparisonPositionals(positional),
@@ -189,7 +194,7 @@ async function main() {
   const ledgerPath = path.join(captureDir, `${section}-loop.json`);
   const reportPath = path.join(captureDir, `${section}-score.json`);
   const lockPath = `${ledgerPath}.lock`;
-  acquireLock(lockPath);
+  const lockOwner = acquireLock(lockPath);
   try {
   const calibrationPath = path.join(captureDir, `${section}-calibration.json`);
   let calibration = null;
@@ -301,12 +306,8 @@ async function main() {
         .map((bp) => bp.name),
     }, configuredLimits, { section, captureScope, refHashes, thresholdConfig, resets });
     writeLedger(ledgerPath, ledger);
-    if (thresholdResolution.thresholds === null) {
-      fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-      console.error('no threshold in effect — run compare:calibrate first');
-      process.exitCode = 1;
-      return;
-    }
+    // Hard stops are inspected on EVERY loop run, including null-threshold
+    // ones — max-iterations/stagnation apply regardless of the pixel gate.
     const inspection = inspectLoop(ledger, configuredLimits, thresholdResolution.thresholds);
     if (inspection.stopReason) {
       ledger.stopReason = inspection.stopReason;
@@ -317,12 +318,18 @@ async function main() {
       process.exitCode = 2;
       return;
     }
+    if (thresholdResolution.thresholds === null) {
+      fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+      console.error('no threshold in effect — run compare:calibrate first');
+      process.exitCode = 1;
+      return;
+    }
   }
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   printSummary(breakpointResults, thresholdResolution.thresholds, pass, reportPath);
   if (pass === false) process.exitCode = 1;
   } finally {
-    releaseLock(lockPath);
+    releaseLock(lockPath, lockOwner);
   }
 }
 
