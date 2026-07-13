@@ -429,11 +429,13 @@ Use this 4-step padding scale when the design calls for large desktop side paddi
 Every section has a `breakpoint` variant:
 
 
-| Variant   | CSS Breakpoint      | Figma Frame Width |
-| --------- | ------------------- | ----------------- |
-| `mobile`  | Default (no prefix) | 375px             |
-| `tablet`  | `md:` (768px+)      | 768px             |
-| `desktop` | `lg:` (1024px+)     | 1440px            |
+| Variant   | CSS Breakpoint      | Figma Frame Width | Inner Content Width |
+| --------- | ------------------- | ----------------- | ------------------- |
+| `mobile`  | Default (no prefix) | 375px             | 345px               |
+| `tablet`  | `md:` (768px+)      | 820px             | 768px               |
+| `desktop` | `lg:` (1024px+)     | 1440px            | 1120px              |
+
+**Frame width ≠ CSS breakpoint on tablet.** The template tablet frames are deliberately drawn **820px wide** (26px side padding around 768px of content) — wider than the 768px `md:` breakpoint viewport. Tooling that renders, captures, or compares at "tablet width" must use the **frame width** (820), not the breakpoint value; reading 768 as the frame width is how capture/compare tools end up dimension-mismatched against every template ref.
 
 
 Script compares mobile/desktop variants and generates responsive classes:
