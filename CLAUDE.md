@@ -344,6 +344,14 @@ Then reference them directly in the partial:
 {{ '#pricing' | campaign_link }}       → #pricing (anchors pass through)
 ```
 
+**CTA links append `{{ cta_params }}`** after `campaign_link` — the reference partials pass tracking/query params through every section-library CTA:
+
+```liquid
+<a href="{{ next_url | campaign_link }}{{ cta_params }}">
+```
+
+`cta_params` is defined once in page frontmatter and **must include the leading `?`** (e.g. `cta_params: "?utm_source=landing"`); leave it unset for no passthrough. Match this on every exported CTA so handoff pages keep the shipped tracking contract.
+
 `**campaign_include**` — renders a partial from `_includes/`:
 
 ```liquid
@@ -667,7 +675,7 @@ All interactivity is powered by a **single unified file**: `assets/js/landing.js
 
 **Canonical implementation** (attribute contracts and comments): [campaign-cart-starter-templates `landing.js`](https://github.com/NextCommerceCo/campaign-cart-starter-templates/blob/main/src/landing/assets/js/landing.js).
 
-**Carousel/slider sections use Swiper** (loaded via `base.html`). The script finds **`[data-swiper]`** on the `.swiper` element and reads **`data-slides`**, **`data-gap`**, **`data-loop`**, etc. from the nearest **`[data-swiper-root]`** ancestor (or legacy wrappers). Put breakpoint attributes on the root; include prev/next hooks if the design has arrows.
+**Carousel/slider sections use Swiper** (loaded via `base.html`). The script finds **`[data-swiper]`** on the `.swiper` element and reads **`data-slides`**, **`data-gap`**, **`data-loop`**, **`data-centered`** / **`data-centered-md`** / **`data-centered-lg`** (centered-slides mode per breakpoint), etc. from the nearest **`[data-swiper-root]`** ancestor (or legacy wrappers). Put breakpoint attributes on the root; include prev/next hooks if the design has arrows.
 
 When converting static Figma slider state into dynamic Swiper markup, preserve the **visual shell** around the functional Swiper hooks. Swiper needs a `.swiper-pagination` element, but Figma may show a separate component wrapper such as a white `rounded-[30px]` tablist/pill around the dots. Keep that wrapper in the HTML and place `.swiper-pagination` inside it; do not reduce the whole component to only the functional pagination element.
 
