@@ -3,7 +3,7 @@ const path = require('path');
 
 const { parseArgs } = require('../compare-score');
 const { deriveCalibrationBreakpoint, parseArgs: parseCalibrationArgs } = require('../compare-calibrate');
-const { readRefSidecar, resolveSectionCapture, resolveSectionIndex } = require('../lib/compare-shared');
+const { readRefSidecar, sidecarError, resolveSectionCapture, resolveSectionIndex } = require('../lib/compare-shared');
 const { CorruptCalibrationError, evaluateThreshold, flagSsimAnomalies, resolveThresholds, scorePair, validateCalibration } = require('../lib/score');
 const { CorruptStateError, acquireLock, appendEntry, assertLoopIdentity, inspectLoop, readLedger, releaseLock, resetLedger, validateLedger, writeLedger } = require('../lib/loop-ledger');
 
@@ -133,6 +133,26 @@ module.exports = ({ assert, fixtures, test }) => {
     assert.deepStrictEqual(readRefSidecar(tmpDir, 'hero-1'), sidecar);
     assert.strictEqual(readRefSidecar(tmpDir, 'missing'), null);
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('sidecarError requires all three breakpoints, scale 1, positive int dims', () => {
+    const full = {
+      scale: 1,
+      breakpoints: {
+        desktop: { width: 1440, height: 800 },
+        tablet: { width: 820, height: 900 },
+        mobile: { width: 375, height: 700 },
+      },
+    };
+    assert.strictEqual(sidecarError(full), null);
+    assert.match(sidecarError(null), /missing or unreadable/);
+    assert.match(sidecarError({ ...full, scale: 1.5 }), /scale/);
+    const noTablet = { scale: 1, breakpoints: { desktop: full.breakpoints.desktop, mobile: full.breakpoints.mobile } };
+    assert.match(sidecarError(noTablet), /missing the tablet/);
+    const badDims = { scale: 1, breakpoints: { ...full.breakpoints, mobile: { width: 0, height: 700 } } };
+    assert.match(sidecarError(badDims), /invalid dimensions/);
+    // The empty/vacuous-pass hole: no breakpoints at all must error, not pass.
+    assert.match(sidecarError({ scale: 1, breakpoints: {} }), /missing the desktop/);
   });
 
   test('calibration uses all first-to-sample scores, their max, and refuses instability', () => {

@@ -12,7 +12,27 @@ const BREAKPOINTS = [
 function readRefSidecar(refDir, section) {
   const sidecarPath = path.join(refDir, `${section}-refs.json`);
   if (!fs.existsSync(sidecarPath)) return null;
-  return JSON.parse(fs.readFileSync(sidecarPath, 'utf8'));
+  try { return JSON.parse(fs.readFileSync(sidecarPath, 'utf8')); } catch { return null; }
+}
+
+// A sidecar must cover ALL three breakpoints with a scale-1 render and positive
+// integer frame dimensions. The repo mandates three real frames per section
+// (CLAUDE.md), so a partial/empty sidecar is an incomplete ref set, not a valid
+// subset — enforcing this here closes the "zero recognized breakpoints scores
+// vacuously and exits 0" hole. Returns an error message string, or null if OK.
+function sidecarError(sidecar) {
+  if (!sidecar || typeof sidecar !== 'object') return 'sidecar is missing or unreadable';
+  if (sidecar.scale !== 1) return `sidecar scale is ${sidecar.scale} (expected 1) — re-run save-ref.sh`;
+  const bps = sidecar.breakpoints;
+  if (!bps || typeof bps !== 'object') return 'sidecar has no breakpoints block';
+  for (const name of BREAKPOINTS.map((b) => b.name)) {
+    const bp = bps[name];
+    if (!bp) return `sidecar is missing the ${name} breakpoint — re-run save-ref.sh with all three breakpoints`;
+    if (!Number.isInteger(bp.width) || bp.width <= 0 || !Number.isInteger(bp.height) || bp.height <= 0) {
+      return `sidecar ${name} has invalid dimensions — re-run save-ref.sh`;
+    }
+  }
+  return null;
 }
 
 function parseComparisonPositionals(positional) {
@@ -281,6 +301,7 @@ module.exports = {
   normalizeEntryUrl,
   parseComparisonPositionals,
   readRefSidecar,
+  sidecarError,
   resolveReferenceSection,
   resolveSectionCapture,
   resolveSectionIndex,

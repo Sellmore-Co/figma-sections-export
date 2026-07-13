@@ -5,7 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { captureBreakpoints } = require('./lib/capture');
 const {
-  BREAKPOINTS, PROJECT_ROOT, buildLiveUrl, parseComparisonPositionals, readRefSidecar,
+  BREAKPOINTS, PROJECT_ROOT, buildLiveUrl, parseComparisonPositionals, readRefSidecar, sidecarError,
   resolveReferenceSection, resolveSectionCapture,
 } = require('./lib/compare-shared');
 const { MAX_NOISE_FLOOR, MAX_THRESHOLD, readDimensions, scorePair } = require('./lib/score');
@@ -63,17 +63,26 @@ async function main() {
   const section = resolution.sectionName;
   const refSidecar = readRefSidecar(refDir, section);
   if (!refSidecar) {
-    throw new Error(`refs for '${section}' were saved without metadata (older save-ref.sh) — re-run save-ref.sh to regenerate refs at scale=1 with a sidecar.`);
+    const error = new Error(`refs for '${section}' were saved without metadata (older save-ref.sh) — re-run save-ref.sh to regenerate refs at scale=1 with a sidecar.`);
+    error.exitCode = 2;
+    throw error;
+  }
+  const sidecarProblem = sidecarError(refSidecar);
+  if (sidecarProblem) {
+    const error = new Error(`ref sidecar for '${section}' is invalid: ${sidecarProblem}.`);
+    error.exitCode = 2;
+    throw error;
   }
   const breakpoints = BREAKPOINTS
-    .filter((breakpoint) => refSidecar.breakpoints?.[breakpoint.name])
     .map((breakpoint) => ({ ...breakpoint, width: refSidecar.breakpoints[breakpoint.name].width }));
   for (const breakpoint of breakpoints) {
     const ref = path.join(refDir, `${section}-${breakpoint.name}.png`);
     if (!fs.existsSync(ref)) throw new Error(`Missing Figma ref: ${path.relative(PROJECT_ROOT, ref)}`);
     const dimensions = await readDimensions(ref);
     if (dimensions.width !== breakpoint.width) {
-      throw new Error(`ref ${section}-${breakpoint.name}.png width ${dimensions.width} does not match recorded frame width ${breakpoint.width} — refs are stale, re-run save-ref.sh.`);
+      const error = new Error(`ref ${section}-${breakpoint.name}.png width ${dimensions.width} does not match recorded frame width ${breakpoint.width} — refs are stale, re-run save-ref.sh.`);
+      error.exitCode = 2;
+      throw error;
     }
   }
   const scope = resolveSectionCapture({ slug: args.slug, section });
@@ -112,5 +121,5 @@ async function main() {
   console.log(`\nCalibration: ${path.relative(PROJECT_ROOT, output)}`);
 }
 
-if (require.main === module) main().catch((error) => { console.error(error.message); process.exit(1); });
+if (require.main === module) main().catch((error) => { console.error(error.message); process.exit(error.exitCode || 1); });
 module.exports = { deriveCalibrationBreakpoint, main, parseArgs };

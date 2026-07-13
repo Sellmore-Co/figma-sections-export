@@ -10,6 +10,7 @@ const {
   buildLiveUrl,
   parseComparisonPositionals,
   readRefSidecar,
+  sidecarError,
   resolveReferenceSection,
   resolveSectionCapture,
   resolveSectionPage,
@@ -189,8 +190,13 @@ async function main() {
     error.exitCode = 2;
     throw error;
   }
+  const sidecarProblem = sidecarError(refSidecar);
+  if (sidecarProblem) {
+    const error = new Error(`ref sidecar for '${section}' is invalid: ${sidecarProblem}.`);
+    error.exitCode = 2;
+    throw error;
+  }
   const breakpoints = BREAKPOINTS
-    .filter((breakpoint) => refSidecar.breakpoints?.[breakpoint.name])
     .map((breakpoint) => ({ ...breakpoint, width: refSidecar.breakpoints[breakpoint.name].width }));
   const missingRefs = breakpoints
     .map((breakpoint) => path.join(refDir, `${section}-${breakpoint.name}.png`))
@@ -347,7 +353,15 @@ async function main() {
   }
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   printSummary(breakpointResults, thresholdResolution.thresholds, pass, reportPath, breakpoints);
-  if (pass === false) process.exitCode = 1;
+  // No threshold in effect cannot be a PASS (0): there is nothing to pass
+  // against. Exit 1 with guidance, matching the documented contract and the
+  // loop-mode null-threshold path.
+  if (pass === null) {
+    console.error('no threshold in effect — run compare:calibrate first (width/dimension gate only)');
+    process.exitCode = 1;
+  } else if (pass === false) {
+    process.exitCode = 1;
+  }
   } finally {
     releaseLock(lockPath);
   }
