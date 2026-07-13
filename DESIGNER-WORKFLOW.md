@@ -119,6 +119,23 @@ After each landing section export, the agent should ask whether the page is comp
 
 For a presell page, the agent may offer handoff immediately because the presell export is usually the whole page.
 
+### Scored compare (accuracy gate)
+
+The side-by-side page is for your eyes; the scored compare is a numeric gate. Calibrate once per section (with the dev server running), then score:
+
+```bash
+npm run compare:calibrate -- novaburn hero-1
+npm run compare:score -- novaburn hero-1
+```
+
+- **PASS** — the live section matches the Figma reference within the calibrated threshold at every breakpoint.
+- **FAIL** — a real mismatch. The report (`_ref/capture/hero-1-score.json`) and heatmap PNGs show where; fix the section and score again.
+- **HARD STOP** — the loop refuses to keep going: either too many attempts, or the score stopped improving. That means stop editing — either the remaining difference is render noise to accept, or it's a defect that needs a human decision (like a missing brand font file). Don't keep polishing past a hard stop.
+- A **size mismatch** (the section renders taller/wider than the Figma frame) always fails, whatever the pixel score.
+- If a run **passes but warns about SSIM**, the layout matches but colors may be off — eyeball the compare page before trusting it.
+
+`--reset-loop` deliberately starts a fresh attempt after a hard stop; it records that you did so, so use it when something actually changed (new refs, new fonts), not to retry the same thing.
+
 ---
 
 ## 6. Final Developer Handoff
