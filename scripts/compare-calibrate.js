@@ -5,10 +5,10 @@ const path = require('path');
 const crypto = require('crypto');
 const { captureBreakpoints } = require('./lib/capture');
 const {
-  BREAKPOINTS, PROJECT_ROOT, buildLiveUrl, parseComparisonPositionals,
+  BREAKPOINTS, PROJECT_ROOT, buildLiveUrl, parseComparisonPositionals, readRefSidecar,
   resolveReferenceSection, resolveSectionCapture,
 } = require('./lib/compare-shared');
-const { MAX_NOISE_FLOOR, MAX_THRESHOLD, scorePair } = require('./lib/score');
+const { MAX_NOISE_FLOOR, MAX_THRESHOLD, readDimensions, scorePair } = require('./lib/score');
 const { DEFAULT_MAX_ITERATIONS, DEFAULT_MIN_DELTA } = require('./lib/loop-ledger');
 
 function usage(stream = console.error) {
@@ -61,6 +61,21 @@ async function main() {
   if (resolution.errors.length) throw new Error(resolution.errors.join('\n'));
   if (!resolution.sectionName) throw new Error('No *-desktop.png files in _ref/ — run save-ref.sh first.');
   const section = resolution.sectionName;
+  const refSidecar = readRefSidecar(refDir, section);
+  if (!refSidecar) {
+    throw new Error(`refs for '${section}' were saved without metadata (older save-ref.sh) — re-run save-ref.sh to regenerate refs at scale=1 with a sidecar.`);
+  }
+  const breakpoints = BREAKPOINTS
+    .filter((breakpoint) => refSidecar.breakpoints?.[breakpoint.name])
+    .map((breakpoint) => ({ ...breakpoint, width: refSidecar.breakpoints[breakpoint.name].width }));
+  for (const breakpoint of breakpoints) {
+    const ref = path.join(refDir, `${section}-${breakpoint.name}.png`);
+    if (!fs.existsSync(ref)) throw new Error(`Missing Figma ref: ${path.relative(PROJECT_ROOT, ref)}`);
+    const dimensions = await readDimensions(ref);
+    if (dimensions.width !== breakpoint.width) {
+      throw new Error(`ref ${section}-${breakpoint.name}.png width ${dimensions.width} does not match recorded frame width ${breakpoint.width} — refs are stale, re-run save-ref.sh.`);
+    }
+  }
   const scope = resolveSectionCapture({ slug: args.slug, section });
   if (scope.warning) console.warn(scope.warning);
   const liveUrl = buildLiveUrl(args.port, args.slug, scope.entryUrl);
@@ -69,12 +84,12 @@ async function main() {
   const captures = [];
   for (let sample = 1; sample <= args.samples; sample += 1) {
     captures.push(await captureBreakpoints({
-      liveUrl, breakpoints: BREAKPOINTS, sectionIndex: scope.sectionIndex, sectionName: section,
+      liveUrl, breakpoints, sectionIndex: scope.sectionIndex, sectionName: section,
       outputPathFor: (bp) => path.join(captureDir, `${section}-${bp.name}-calibration-${sample}.png`),
     }));
   }
   const calibration = {};
-  for (const bp of BREAKPOINTS) {
+  for (const bp of breakpoints) {
     const scores = [];
     for (let sample = 1; sample < captures.length; sample += 1) {
       scores.push((await scorePair(captures[0][bp.name], captures[sample][bp.name])).score);
@@ -84,7 +99,7 @@ async function main() {
   calibration.loopDefaults = { maxIterations: DEFAULT_MAX_ITERATIONS, minDelta: DEFAULT_MIN_DELTA };
   calibration.calibratedAt = new Date().toISOString();
   calibration.captureScope = { mode: scope.sectionIndex === null ? 'full-page-fallback' : 'section-index', ...(scope.sectionIndex === null ? {} : { sectionIndex: scope.sectionIndex }) };
-  calibration.refHashes = Object.fromEntries(BREAKPOINTS.map((bp) => {
+  calibration.refHashes = Object.fromEntries(breakpoints.map((bp) => {
     const ref = path.join(refDir, `${section}-${bp.name}.png`);
     if (!fs.existsSync(ref)) throw new Error(`Missing Figma ref: ${path.relative(PROJECT_ROOT, ref)}`);
     return [bp.name, crypto.createHash('sha256').update(fs.readFileSync(ref)).digest('hex')];
@@ -93,7 +108,7 @@ async function main() {
   fs.writeFileSync(output, `${JSON.stringify(calibration, null, 2)}\n`);
   console.log('\nBreakpoint  Noise floor  Threshold   Samples');
   console.log('----------  -----------  ----------  -------');
-  for (const bp of BREAKPOINTS) console.log(`${bp.name.padEnd(10)}  ${calibration[bp.name].noiseFloor.toFixed(6).padStart(11)}  ${calibration[bp.name].threshold.toFixed(6).padStart(10)}  ${String(args.samples).padStart(7)}`);
+  for (const bp of breakpoints) console.log(`${bp.name.padEnd(10)}  ${calibration[bp.name].noiseFloor.toFixed(6).padStart(11)}  ${calibration[bp.name].threshold.toFixed(6).padStart(10)}  ${String(args.samples).padStart(7)}`);
   console.log(`\nCalibration: ${path.relative(PROJECT_ROOT, output)}`);
 }
 

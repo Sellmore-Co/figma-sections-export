@@ -9,6 +9,12 @@ const BREAKPOINTS = [
   { name: 'mobile', width: 375 },
 ];
 
+function readRefSidecar(refDir, section) {
+  const sidecarPath = path.join(refDir, `${section}-refs.json`);
+  if (!fs.existsSync(sidecarPath)) return null;
+  return JSON.parse(fs.readFileSync(sidecarPath, 'utf8'));
+}
+
 function parseComparisonPositionals(positional) {
   const [slug, arg2, arg3] = positional;
   let explicitSection = null;
@@ -274,6 +280,7 @@ module.exports = {
   listDesktopPrefixes,
   normalizeEntryUrl,
   parseComparisonPositionals,
+  readRefSidecar,
   resolveReferenceSection,
   resolveSectionCapture,
   resolveSectionIndex,

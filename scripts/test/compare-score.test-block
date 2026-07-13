@@ -3,7 +3,7 @@ const path = require('path');
 
 const { parseArgs } = require('../compare-score');
 const { deriveCalibrationBreakpoint, parseArgs: parseCalibrationArgs } = require('../compare-calibrate');
-const { resolveSectionCapture, resolveSectionIndex } = require('../lib/compare-shared');
+const { readRefSidecar, resolveSectionCapture, resolveSectionIndex } = require('../lib/compare-shared');
 const { CorruptCalibrationError, evaluateThreshold, flagSsimAnomalies, resolveThresholds, scorePair, validateCalibration } = require('../lib/score');
 const { CorruptStateError, acquireLock, appendEntry, assertLoopIdentity, inspectLoop, readLedger, releaseLock, resetLedger, validateLedger, writeLedger } = require('../lib/loop-ledger');
 
@@ -12,6 +12,7 @@ module.exports = ({ assert, fixtures, test }) => {
   const identical = path.join(fixtures, 'score-identical.png');
   const defect = path.join(fixtures, 'score-defect.png');
   const dimensionMismatch = path.join(fixtures, 'score-dimension-mismatch.png');
+  const heightMismatch = path.join(fixtures, 'score-height-mismatch.png');
   const sectionCaptureRoot = path.join(fixtures, 'section-capture');
   const sectionCaptureSrc = path.join(sectionCaptureRoot, 'src', 'fake');
   const sectionCapturePage = path.join(sectionCaptureSrc, 'landing.html');
@@ -29,7 +30,8 @@ module.exports = ({ assert, fixtures, test }) => {
   test('identical PNGs score zero', async () => {
     const result = await scorePair(reference, fs.readFileSync(identical));
     assert.strictEqual(result.score, 0);
-    assert.strictEqual(result.dimensionsMatch, true);
+    assert.strictEqual(result.widthMatch, true);
+    assert.strictEqual(result.heightDelta, 0);
     assert.deepStrictEqual(result.topRegions, []);
   });
 
@@ -42,10 +44,21 @@ module.exports = ({ assert, fixtures, test }) => {
     assert.strictEqual(result.topRegions[0].mismatchRatio, 1);
   });
 
-  test('dimension mismatch trips the independent dimension gate', async () => {
+  test('width mismatch trips the independent width gate', async () => {
     const result = await scorePair(reference, dimensionMismatch);
-    assert.strictEqual(result.dimensionsMatch, false);
+    assert.strictEqual(result.widthMatch, false);
+    assert.strictEqual(result.heightDelta, 0);
     assert.deepStrictEqual(result.dimensionDelta, { width: 4, height: 0 });
+  });
+
+  test('height mismatch is scored but does not trip the width gate', async () => {
+    const result = await scorePair(reference, heightMismatch);
+    assert.strictEqual(result.widthMatch, true);
+    assert.strictEqual(result.heightDelta, 4);
+    assert.deepStrictEqual(result.dimensionDelta, { width: 0, height: 4 });
+    assert.ok(result.score > 0);
+    assert.strictEqual(evaluateThreshold([result], null), null);
+    assert.strictEqual(evaluateThreshold([result], result.score), true);
   });
 
   test('threshold flag parses and flips aggregate pass/fail', async () => {
@@ -74,7 +87,7 @@ module.exports = ({ assert, fixtures, test }) => {
     assert.match(parseCalibrationArgs(['campaign', '--minimum-floor', '0.051']).error, /0 to 0.05/);
   });
 
-  test('dimension gate fails independently of the optional threshold', async () => {
+  test('width gate fails independently of the optional threshold', async () => {
     const mismatchResult = await scorePair(reference, dimensionMismatch);
     assert.strictEqual(evaluateThreshold([mismatchResult], null), false);
     assert.strictEqual(evaluateThreshold([mismatchResult], 1), false);
@@ -91,8 +104,8 @@ module.exports = ({ assert, fixtures, test }) => {
 
   test('per-breakpoint thresholds are evaluated independently', () => {
     const scores = {
-      desktop: { score: 0.011, dimensionsMatch: true },
-      mobile: { score: 0.011, dimensionsMatch: true },
+      desktop: { score: 0.011, widthMatch: true },
+      mobile: { score: 0.011, widthMatch: true },
     };
     assert.strictEqual(evaluateThreshold(scores, { desktop: 0.01, mobile: 0.02 }), false);
     scores.desktop.score = 0.009;
@@ -101,12 +114,25 @@ module.exports = ({ assert, fixtures, test }) => {
 
   test('passing low-SSIM breakpoints are flagged without becoming a gate', () => {
     const results = {
-      desktop: { score: 0.005, dimensionsMatch: true, ssim: 0.94 },
-      tablet: { score: 0.005, dimensionsMatch: true, ssim: 0.96 },
+      desktop: { score: 0.005, widthMatch: true, ssim: 0.94 },
+      tablet: { score: 0.005, widthMatch: true, ssim: 0.96 },
     };
     assert.deepStrictEqual(flagSsimAnomalies(results, { desktop: 0.01, tablet: 0.01 }), ['desktop']);
     assert.strictEqual(results.desktop.ssimAnomaly, true);
     assert.strictEqual(evaluateThreshold(results, { desktop: 0.01, tablet: 0.01 }), true);
+  });
+
+  test('readRefSidecar parses present metadata and returns null when absent', () => {
+    const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'ref-sidecar-'));
+    const sidecar = {
+      generatedBy: 'save-ref.sh',
+      scale: 1,
+      breakpoints: { tablet: { width: 820, height: 600 } },
+    };
+    fs.writeFileSync(path.join(tmpDir, 'hero-1-refs.json'), JSON.stringify(sidecar));
+    assert.deepStrictEqual(readRefSidecar(tmpDir, 'hero-1'), sidecar);
+    assert.strictEqual(readRefSidecar(tmpDir, 'missing'), null);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   test('calibration uses all first-to-sample scores, their max, and refuses instability', () => {

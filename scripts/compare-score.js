@@ -9,11 +9,12 @@ const {
   PROJECT_ROOT,
   buildLiveUrl,
   parseComparisonPositionals,
+  readRefSidecar,
   resolveReferenceSection,
   resolveSectionCapture,
   resolveSectionPage,
 } = require('./lib/compare-shared');
-const { CorruptCalibrationError, PIXELMATCH_THRESHOLD, evaluateThreshold, flagSsimAnomalies, resolveThresholds, scorePair, validateCalibration } = require('./lib/score');
+const { CorruptCalibrationError, PIXELMATCH_THRESHOLD, evaluateThreshold, flagSsimAnomalies, readDimensions, resolveThresholds, scorePair, validateCalibration } = require('./lib/score');
 const { CorruptStateError, DEFAULT_MAX_ITERATIONS, DEFAULT_MIN_DELTA, MAX_ITERATIONS, MIN_LOOP_DELTA, acquireLock, appendEntry, assertLoopIdentity, initializeLedger, inspectLoop, readLedger, releaseLock, resetLedger, writeLedger } = require('./lib/loop-ledger');
 
 function printUsage(stream = console.error) {
@@ -115,14 +116,14 @@ function signed(value) {
   return `${value >= 0 ? '+' : ''}${value}`;
 }
 
-function printSummary(results, thresholds, pass, reportPath) {
-  console.log('\nBreakpoint  Score       Dimensions  Delta (w,h)    SSIM');
+function printSummary(results, thresholds, pass, reportPath, breakpoints = BREAKPOINTS) {
+  console.log('\nBreakpoint  Score       Width       Delta (w,h)    SSIM');
   console.log('----------  ----------  ----------  -------------  ----------');
-  for (const breakpoint of BREAKPOINTS) {
+  for (const breakpoint of breakpoints) {
     const result = results[breakpoint.name];
     console.log(
       `${breakpoint.name.padEnd(10)}  ${result.score.toFixed(6).padStart(10)}  `
-        + `${(result.dimensionsMatch ? 'match' : 'MISMATCH').padEnd(10)}  `
+        + `${(result.widthMatch ? 'match' : 'MISMATCH').padEnd(10)}  `
         + `${`${signed(result.dimensionDelta.width)},${signed(result.dimensionDelta.height)}`.padEnd(13)}  `
         + result.ssim.toFixed(6),
     );
@@ -130,10 +131,10 @@ function printSummary(results, thresholds, pass, reportPath) {
   let gate;
   if (pass === false) {
     gate = thresholds === null
-      ? 'FAIL (dimension gate)'
+      ? 'FAIL (width gate)'
       : 'FAIL at per-breakpoint threshold';
   } else if (pass === null) {
-    gate = 'dimension gate passed; pixel score not evaluated (no threshold supplied)';
+    gate = 'width gate passed; pixel score not evaluated (no threshold supplied)';
   } else {
     gate = 'PASS at per-breakpoint threshold';
   }
@@ -182,11 +183,29 @@ async function main() {
   }
 
   const section = resolution.sectionName;
-  const missingRefs = BREAKPOINTS
+  const refSidecar = readRefSidecar(refDir, section);
+  if (!refSidecar) {
+    const error = new Error(`refs for '${section}' were saved without metadata (older save-ref.sh) — re-run save-ref.sh to regenerate refs at scale=1 with a sidecar.`);
+    error.exitCode = 2;
+    throw error;
+  }
+  const breakpoints = BREAKPOINTS
+    .filter((breakpoint) => refSidecar.breakpoints?.[breakpoint.name])
+    .map((breakpoint) => ({ ...breakpoint, width: refSidecar.breakpoints[breakpoint.name].width }));
+  const missingRefs = breakpoints
     .map((breakpoint) => path.join(refDir, `${section}-${breakpoint.name}.png`))
     .filter((file) => !fs.existsSync(file));
   if (missingRefs.length) {
     throw new Error(`Missing Figma refs:\n${missingRefs.map((file) => `  ${relativePath(file)}`).join('\n')}`);
+  }
+  for (const breakpoint of breakpoints) {
+    const refPath = path.join(refDir, `${section}-${breakpoint.name}.png`);
+    const dimensions = await readDimensions(refPath);
+    if (dimensions.width !== breakpoint.width) {
+      const error = new Error(`ref ${section}-${breakpoint.name}.png width ${dimensions.width} does not match recorded frame width ${breakpoint.width} — refs are stale, re-run save-ref.sh.`);
+      error.exitCode = 2;
+      throw error;
+    }
   }
 
   const captureDir = path.join(refDir, 'capture');
@@ -205,7 +224,7 @@ async function main() {
   const thresholdResolution = resolveThresholds(
     args.threshold,
     calibration,
-    BREAKPOINTS.map((breakpoint) => breakpoint.name),
+    breakpoints.map((breakpoint) => breakpoint.name),
   );
   const configuredLimits = {
     maxIterations: args.maxIterations ?? calibration?.loopDefaults?.maxIterations ?? DEFAULT_MAX_ITERATIONS,
@@ -229,7 +248,7 @@ async function main() {
     : args.selector
       ? { mode: 'selector', selector: args.selector }
       : { mode: sectionIndex === null ? 'full-page-fallback' : 'section-index', ...(sectionIndex === null ? {} : { sectionIndex }) };
-  const refHashes = Object.fromEntries(BREAKPOINTS.map((bp) => [bp.name, crypto.createHash('sha256')
+  const refHashes = Object.fromEntries(breakpoints.map((bp) => [bp.name, crypto.createHash('sha256')
     .update(fs.readFileSync(path.join(refDir, `${section}-${bp.name}.png`))).digest('hex')]));
   const thresholdConfig = { thresholds: thresholdResolution.thresholds, source: thresholdResolution.source };
   let ledger = null;
@@ -252,7 +271,7 @@ async function main() {
   }
   const capturePaths = await captureBreakpoints({
     liveUrl,
-    breakpoints: BREAKPOINTS,
+    breakpoints,
     outputPathFor: (breakpoint) => path.join(captureDir, `${section}-${breakpoint.name}-live.png`),
     selector: args.selector,
     sectionIndex,
@@ -261,14 +280,15 @@ async function main() {
   });
 
   const breakpointResults = {};
-  for (const breakpoint of BREAKPOINTS) {
+  for (const breakpoint of breakpoints) {
     const refPath = path.join(refDir, `${section}-${breakpoint.name}.png`);
     const capturePath = capturePaths[breakpoint.name];
     const heatmapPath = path.join(captureDir, `${section}-${breakpoint.name}-heatmap.png`);
     const result = await scorePair(refPath, capturePath, { heatmapPath });
     breakpointResults[breakpoint.name] = {
       score: result.score,
-      dimensionsMatch: result.dimensionsMatch,
+      widthMatch: result.widthMatch,
+      heightDelta: result.heightDelta,
       dimensionDelta: result.dimensionDelta,
       ssim: result.ssim,
       topRegions: result.topRegions,
@@ -297,11 +317,11 @@ async function main() {
     const ledgerPass = thresholdResolution.thresholds === null ? null : pass;
     ledger = appendEntry(ledger, {
       timestamp: new Date().toISOString(),
-      scores: Object.fromEntries(BREAKPOINTS.map((breakpoint) => [breakpoint.name, breakpointResults[breakpoint.name].score])),
+      scores: Object.fromEntries(breakpoints.map((breakpoint) => [breakpoint.name, breakpointResults[breakpoint.name].score])),
       pass: ledgerPass,
       ssimAnomalies: anomalies,
-      failingBreakpoints: thresholdResolution.thresholds === null ? [] : BREAKPOINTS
-        .filter((bp) => !breakpointResults[bp.name].dimensionsMatch
+      failingBreakpoints: thresholdResolution.thresholds === null ? [] : breakpoints
+        .filter((bp) => !breakpointResults[bp.name].widthMatch
           || breakpointResults[bp.name].score > thresholdResolution.thresholds[bp.name])
         .map((bp) => bp.name),
     }, configuredLimits, { section, captureScope, refHashes, thresholdConfig, resets });
@@ -326,7 +346,7 @@ async function main() {
     }
   }
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-  printSummary(breakpointResults, thresholdResolution.thresholds, pass, reportPath);
+  printSummary(breakpointResults, thresholdResolution.thresholds, pass, reportPath, breakpoints);
   if (pass === false) process.exitCode = 1;
   } finally {
     releaseLock(lockPath);
@@ -340,7 +360,7 @@ if (require.main === module) {
       process.exit(2);
     }
     console.error(error.message);
-    process.exit(/another compare:score|mid-loop|hashes changed|scope changed/.test(error.message) ? 2 : 1);
+    process.exit(error.exitCode || (/another compare:score|mid-loop|hashes changed|scope changed/.test(error.message) ? 2 : 1));
   });
 }
 

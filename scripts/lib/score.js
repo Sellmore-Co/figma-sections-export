@@ -162,8 +162,8 @@ async function scorePair(referenceInput, candidateInput, options = {}) {
   return {
     score: pixelmatch.mismatchRatio,
     mismatchPixels: pixelmatch.mismatchPixels,
-    dimensionsMatch: normalized.referenceDimensions.width === normalized.candidateDimensions.width
-      && normalized.referenceDimensions.height === normalized.candidateDimensions.height,
+    widthMatch: normalized.referenceDimensions.width === normalized.candidateDimensions.width,
+    heightDelta: normalized.candidateDimensions.height - normalized.referenceDimensions.height,
     dimensionDelta: {
       width: normalized.candidateDimensions.width - normalized.referenceDimensions.width,
       height: normalized.candidateDimensions.height - normalized.referenceDimensions.height,
@@ -188,9 +188,9 @@ function evaluateThreshold(scores, threshold) {
     ? scores.map((result, index) => [String(index), result])
     : Object.entries(scores);
   const values = entries.map(([, result]) => result);
-  // The dimension gate is independent of the optional pixel threshold: a
-  // dimension mismatch always fails, even when no threshold is supplied.
-  if (!values.every((result) => result.dimensionsMatch)) return false;
+  // Width is a structural viewport/scale gate. Height differences are already
+  // represented in the union-padded pixel score and are not a separate gate.
+  if (!values.every((result) => result.widthMatch)) return false;
   if (threshold === null || threshold === undefined) return null;
   return entries.every(([name, result]) => {
     const breakpointThreshold = typeof threshold === 'number' ? threshold : threshold[name];
@@ -201,7 +201,7 @@ function evaluateThreshold(scores, threshold) {
 function flagSsimAnomalies(results, thresholds) {
   for (const [name, result] of Object.entries(results)) {
     const threshold = thresholds?.[name];
-    result.ssimAnomaly = Number.isFinite(threshold) && result.dimensionsMatch
+    result.ssimAnomaly = Number.isFinite(threshold) && result.widthMatch
       && result.score <= threshold && result.ssim < 0.95;
   }
   return Object.keys(results).filter((name) => results[name].ssimAnomaly);

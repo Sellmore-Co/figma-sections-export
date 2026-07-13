@@ -54,3 +54,13 @@ write('score-reference.png', reference);
 write('score-identical.png', clonePng(reference));
 write('score-defect.png', defect);
 write('score-dimension-mismatch.png', clonePng(reference, 68, 64));
+const heightMismatch = clonePng(reference, 64, 68);
+for (let y = 64; y < heightMismatch.height; y += 1) {
+  for (let x = 0; x < heightMismatch.width; x += 1) {
+    const offset = (y * heightMismatch.width + x) * 4;
+    heightMismatch.data[offset] = 0;
+    heightMismatch.data[offset + 1] = 0;
+    heightMismatch.data[offset + 2] = 0;
+  }
+}
+write('score-height-mismatch.png', heightMismatch);
