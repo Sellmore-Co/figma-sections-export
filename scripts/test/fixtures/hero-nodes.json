@@ -1,0 +1,64 @@
+{
+  "desktop": {
+    "id": "143:1000",
+    "name": "hero1-desktop",
+    "type": "FRAME",
+    "absoluteBoundingBox": { "x": 0, "y": 0, "width": 1440, "height": 600 },
+    "children": [
+      {
+        "id": "143:1001",
+        "name": "heading",
+        "type": "TEXT",
+        "characters": "Recover faster, every day",
+        "style": { "fontSize": 44, "fontWeight": 700 },
+        "absoluteBoundingBox": { "x": 120, "y": 120, "width": 600, "height": 120 }
+      },
+      {
+        "id": "143:1002",
+        "name": "Link → Button",
+        "type": "FRAME",
+        "absoluteBoundingBox": { "x": 120, "y": 480, "width": 300, "height": 60 },
+        "children": [
+          {
+            "id": "143:1003",
+            "name": "label",
+            "type": "TEXT",
+            "characters": "Order Now",
+            "style": { "fontSize": 20, "fontWeight": 700, "hyperlink": { "type": "URL", "url": "https://example.com/checkout" } },
+            "absoluteBoundingBox": { "x": 180, "y": 498, "width": 180, "height": 24 }
+          }
+        ]
+      }
+    ]
+  },
+  "tablet": {
+    "id": "143:1100",
+    "name": "hero1-tablet",
+    "type": "FRAME",
+    "absoluteBoundingBox": { "x": 0, "y": 0, "width": 768, "height": 500 },
+    "children": [
+      {
+        "id": "143:1102",
+        "name": "Link → Button",
+        "type": "FRAME",
+        "absoluteBoundingBox": { "x": 60, "y": 400, "width": 300, "height": 56 },
+        "children": []
+      }
+    ]
+  },
+  "mobile": {
+    "id": "143:1200",
+    "name": "hero1-mobile",
+    "type": "FRAME",
+    "absoluteBoundingBox": { "x": 0, "y": 0, "width": 375, "height": 700 },
+    "children": [
+      {
+        "id": "143:1202",
+        "name": "Link → Button",
+        "type": "FRAME",
+        "absoluteBoundingBox": { "x": 20, "y": 600, "width": 335, "height": 52 },
+        "children": []
+      }
+    ]
+  }
+}

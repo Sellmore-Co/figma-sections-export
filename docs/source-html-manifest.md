@@ -76,6 +76,7 @@ If the manifest is absent, behavior is unchanged from today: campaigns-os falls 
 - Every `pages[].path` must exist on disk.
 - Every `landing.html` / `presell.html` on disk should be listed in `pages[]` (warning if not — partial campaigns are valid, but unintended drift should surface).
 - Duplicate `page_id` entries are an error.
+- When `producer_provenance` is present for Campaigns OS semantic handoff, `source_type` must be `semantic_figma_export`, `screenshot_fallback_used` must be `false`, and `section_exports[]` must not contain explicit `hotspot` image-slice exports. Hotspots are an escape hatch for image-only strips, not semantic source material.
 
 A missing manifest is **not** an error during validate — the manifest is a handoff artifact and validate runs throughout the iteration loop.
 

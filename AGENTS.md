@@ -151,8 +151,12 @@ Select your campaign from the list → opens the configured `entry_url`, usually
 | `npm run new <slug> <section>` | Scaffold a landing section preview |
 | `npm run new <slug> presell "Display Name" presell-page` | Scaffold a standalone presell page |
 | `npm run compress <slug>` | Optimise all images in `src/<slug>/assets/images/` — run after downloading Figma assets and before final handoff |
+| `npm run extract -- --slug <slug> --section <name> --desktop <url> [--tablet <url>] [--mobile <url>]` | REST-based helper for FAQ accordions and explicit image-only hotspot escape hatches (see [docs/interactive-export.md](docs/interactive-export.md)) |
+| `npm run annotations -- <figma-url>` | Probe whether Dev Mode annotations / comments are reachable for the current token (see [docs/figma-annotations.md](docs/figma-annotations.md)) |
 
 **`npm run compress`** runs lossless/lossy compression on JPG, PNG, and WebP assets in-place. Run it once per section after all images are downloaded. Do not run it repeatedly on already-compressed files.
+
+**`npm run extract`** is the token-based REST helper path — a fallback for the Figma MCP plugin when you need FAQ Q&A extraction or an explicit image-only hotspot escape hatch. It is not the default semantic exporter for regular landing sections. FAQ/accordion sections emit shared `data-accordion` markup driven by `assets/js/landing.js`; image-slice hotspots require `--type hotspot` and should only be used when baked text is acceptable. Copy is printed as a frontmatter block to paste into `landing.html`. See [docs/interactive-export.md](docs/interactive-export.md); for authored copy in Dev Mode annotations see [docs/figma-annotations.md](docs/figma-annotations.md).
 
 **Shared landing behavior:** new landing campaigns copy `assets/js/landing.js` from `templates/landing/assets/js/landing.js`. Update that template when the reference behavior changes; do not generate one-off per-section accordion or Swiper scripts. The included `data-countdown` helper is a landing-only fallback; promo/checkout timers should follow the campaign-cart/web-component timer pattern from the checkout templates.
 

@@ -1,0 +1,46 @@
+{
+  "desktop": {
+    "id": "143:2000",
+    "name": "faq1-desktop",
+    "type": "FRAME",
+    "absoluteBoundingBox": { "x": 0, "y": 0, "width": 1440, "height": 900 },
+    "children": [
+      {
+        "id": "143:2001",
+        "name": "heading",
+        "type": "TEXT",
+        "characters": "Frequently Asked Questions",
+        "style": { "fontSize": 40, "fontWeight": 700 },
+        "absoluteBoundingBox": { "x": 320, "y": 80, "width": 800, "height": 56 }
+      },
+      {
+        "id": "143:2010",
+        "name": "list",
+        "type": "FRAME",
+        "absoluteBoundingBox": { "x": 320, "y": 180, "width": 800, "height": 600 },
+        "children": [
+          {
+            "id": "143:2011",
+            "name": "faq-item",
+            "type": "FRAME",
+            "absoluteBoundingBox": { "x": 320, "y": 180, "width": 800, "height": 120 },
+            "children": [
+              { "id": "143:2012", "name": "span.faq-opener", "type": "TEXT", "characters": "How soon will I see results?", "style": { "fontSize": 20, "fontWeight": 600 } },
+              { "id": "143:2013", "name": "answer", "type": "TEXT", "characters": "Most people notice a difference within the first two weeks of daily use.", "style": { "fontSize": 16 } }
+            ]
+          },
+          {
+            "id": "143:2021",
+            "name": "faq-item",
+            "type": "FRAME",
+            "absoluteBoundingBox": { "x": 320, "y": 320, "width": 800, "height": 120 },
+            "children": [
+              { "id": "143:2022", "name": "span.faq-opener", "type": "TEXT", "characters": "Is there a money-back guarantee?", "style": { "fontSize": 20, "fontWeight": 600 } },
+              { "id": "143:2023", "name": "answer", "type": "TEXT", "characters": "Yes — every order is covered by a 30 day money-back guarantee.", "style": { "fontSize": 16 } }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
