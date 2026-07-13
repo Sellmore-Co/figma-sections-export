@@ -34,6 +34,7 @@
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0",
     "puppeteer-core": "^24.43.1",
+    "sharp": "^0.34.5",
     "ssim.js": "^3.5.0"
   }
 }

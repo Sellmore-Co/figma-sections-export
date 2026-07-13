@@ -7,9 +7,17 @@ summary lives in [DESIGNER-WORKFLOW.md](../DESIGNER-WORKFLOW.md); command syntax
 ## Architecture
 
 ```
-Figma ref PNGs (src/{slug}/_ref/{section}-{bp}.png, from save-ref.sh)
+Figma ref PNGs + {section}-refs.json sidecar (src/{slug}/_ref/, from save-ref.sh)
+  · save-ref.sh renders at scale=1 (ref px == CSS px == capture px, one
+    coordinate space, no normalization) and writes the sidecar: per-breakpoint
+    frame width + scale, read from each PNG's IHDR.
         │
 headless capture (puppeteer-core + system Chrome/Edge, scripts/lib/capture.js)
+  · capture width per breakpoint comes from the SIDECAR frame width, not a
+    hardcoded breakpoint value — the standard template tablet frame is 820px
+    (not the 768 md breakpoint), so hardcoding 768 dimension-mismatched every
+    template ref. Missing sidecar → hard error (legacy 1.5× refs), never a
+    silent MISMATCH.
   · section-scoped by source-resolved top-level <section> index (leaf partials only),
     or --selector / --full-page
   · fonts + images awaited (bounded), animations frozen, buffered writes so the
@@ -17,8 +25,11 @@ headless capture (puppeteer-core + system Chrome/Edge, scripts/lib/capture.js)
         │
 scoring (scripts/lib/score.js)
   · pixelmatch @ internal threshold 0.1 → mismatch ratio = THE score
-  · dimension equality = independent hard gate (union-canvas padding; excess
-    content is never cropped away)
+  · WIDTH is the structural hard gate (widthMatch): a width mismatch means wrong
+    viewport/scale/frame convention and always fails. HEIGHT is reported as a
+    delta and folded into the score via union-canvas padding (excess content is
+    never cropped away) — a legitimate in-progress height change shows up in the
+    score, not as a conflated dimension hard-fail.
   · SSIM = telemetry only; a passing breakpoint with SSIM < 0.95 is flagged
     ssimAnomaly (pixelmatch@0.1 is weak on subtle global color shifts)
   · 12×6 region grid → top mismatch regions + red/yellow heatmap PNG
@@ -46,12 +57,22 @@ loop ledger (scripts/lib/loop-ledger.js, --loop)
 
 | Code | Meaning |
 | ---- | ------- |
-| 0 | PASS — dimension gate and every per-breakpoint threshold |
+| 0 | PASS — width gate and every per-breakpoint threshold |
 | 1 | FAIL, remediation may continue (or: no threshold in effect yet) |
-| 2 | HARD STOP / refusal — stop remediating; human decision required |
+| 2 | HARD STOP / refusal — stop remediating; human decision required (also: missing/stale ref sidecar — re-run save-ref.sh) |
 
 Threshold precedence: `--threshold` flag → `{section}-calibration.json` → none
-(dimension gate only, exit 1 in loop mode).
+(width gate only, exit 1 in loop mode).
+
+## Known limitation — section index vs rendered DOM
+
+`resolveSectionIndex` (scripts/lib/compare-shared.js) computes the top-level
+`<section>` index by counting sections in the page source and its included leaf
+partials. The browser, by contrast, counts the *rendered* DOM. These agree for
+the current templates, but if a campaign **layout** file (e.g. `base-landing.html`)
+ever wraps `{{ content }}` in its own top-level `<section>`, the source count and
+the DOM count desync and the harness captures the wrong section. Use `--selector`
+to scope explicitly when a layout contributes its own sections.
 
 ## Metric decision (Phase-1 spike, human-ratified path)
 
@@ -78,11 +99,20 @@ review gate, not the client.
 
 On a deterministic local fixture (`proof-fixture`, solid colors, system fonts):
 
+Refs generated the way `save-ref.sh` now produces them — scale=1 with a
+`{section}-refs.json` sidecar recording per-breakpoint **frame** widths
+(desktop 1440, tablet **820**, mobile 375):
+
 | Step | Desktop score | Result |
 | ---- | ------------- | ------ |
-| Baseline | 0.000000 | PASS (SSIM 1.0) |
-| Injected wrong brand color (CTA yellow→blue) | 0.045512 (tablet 0.077496, mobile 0.064638) | FAIL, heatmap localizes the CTA |
+| Baseline (all breakpoints, incl. tablet@820) | 0.000000 | PASS at every breakpoint (SSIM 1.0) |
+| Injected wrong brand color (CTA yellow→blue) | 0.045512 (tablet 0.077953, mobile 0.064638) | FAIL, heatmap localizes the CTA |
 | One remediation pass (revert) | 0.000000 | PASS — threshold crossed, 100% diff reduction |
+| Refs with no sidecar (legacy 1.5× set) | — | HARD ERROR exit 2 "re-run save-ref.sh" (not a bare MISMATCH) |
+
+The tablet row is the load-bearing one: before the sidecar it captured at the
+768 md breakpoint and dimension-mismatched the 820 frame on every template
+export; it now captures at the recorded 820 frame width and diffs 1:1.
 
 Negative control: refs re-captured at 2× device scale and downsampled (AA/font-render
 noise only) scored 0.004408–0.008065 — the loop **hard-stopped on run 2**, classified

@@ -136,6 +136,8 @@ npm run compare:score -- novaburn hero-1
 
 `--reset-loop` deliberately starts a fresh attempt after a hard stop; it records that you did so, so use it when something actually changed (new refs, new fonts), not to retry the same thing.
 
+If scoring stops with **"re-run save-ref.sh"**, your reference screenshots were saved by an older version of the tool (before the accuracy gate). Just re-run `save-ref.sh` for that section — the new version records the frame widths the scorer needs.
+
 ---
 
 ## 6. Final Developer Handoff
