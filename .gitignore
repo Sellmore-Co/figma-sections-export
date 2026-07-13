@@ -26,11 +26,17 @@ scss/
 # Local secrets
 .env
 
-# Campaign previews — local working directory, not part of the tool
-src/
+# Campaign previews — local working directory, not part of the tool.
+# Anchored to the repo root so it does NOT swallow committed test fixtures
+# under scripts/test/fixtures/**/src/ (an unanchored `src/` matched those and
+# silently excluded the section-capture fixture tree).
+/src/
 
-# Campaign data — local, not part of the tool
-_data/campaigns.json
+# Campaign data — local, not part of the tool (root only, same reason).
+/_data/campaigns.json
+
+# Test fixtures are part of the tool and must always be tracked.
+!scripts/test/fixtures/
 
 # Generated metric-spike images (recreated from the local golden reference)
 scripts/spike/out/
