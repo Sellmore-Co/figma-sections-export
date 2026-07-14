@@ -82,6 +82,48 @@ function isSafeFamily(family) {
   return SAFE_FONT_FAMILIES.has(family.toLowerCase());
 }
 
+// Map each custom font family to the set of font weights used alongside it.
+// Scans class="..." attributes: any weight utility (font-bold, md:font-black,
+// font-[650]) in the same attribute as a font-['Family'] class counts as a
+// weight that family must cover. Returns Map<family, Set<number>>.
+const WEIGHT_UTILITIES = {
+  'font-thin': 100,
+  'font-extralight': 200,
+  'font-light': 300,
+  'font-normal': 400,
+  'font-medium': 500,
+  'font-semibold': 600,
+  'font-bold': 700,
+  'font-extrabold': 800,
+  'font-black': 900,
+};
+
+function extractFamilyWeights(html) {
+  const weights = new Map();
+  const attrRe = /class\s*=\s*"([^"]*)"/g;
+  let attr;
+  while ((attr = attrRe.exec(html)) !== null) {
+    const classes = attr[1];
+    const usages = extractFontUsages(classes).filter(({ family }) => !isSafeFamily(family));
+    if (!usages.length) continue;
+
+    const found = new Set();
+    for (const token of classes.split(/\s+/)) {
+      const bare = token.replace(/^(?:[a-zA-Z][\w-]*:)+/, '');
+      if (WEIGHT_UTILITIES[bare] !== undefined) found.add(WEIGHT_UTILITIES[bare]);
+      const numeric = bare.match(/^font-\[(\d{2,3})\]$/);
+      if (numeric) found.add(Number(numeric[1]));
+    }
+    if (!found.size) continue;
+
+    for (const { family } of usages) {
+      if (!weights.has(family)) weights.set(family, new Set());
+      for (const w of found) weights.get(family).add(w);
+    }
+  }
+  return weights;
+}
+
 // Parse @font-face blocks from a fonts.css string.
 // Returns [{ family, srcUrls: [...] }].
 function parseFontFaces(css) {
@@ -104,6 +146,7 @@ module.exports = {
   resolveFamily,
   expectedFontFileBase,
   escapeClassSelector,
+  extractFamilyWeights,
   extractFontUsages,
   isSafeFamily,
   parseFontFaces,
