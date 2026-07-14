@@ -1,0 +1,374 @@
+const fs = require('fs');
+const path = require('path');
+
+const { parseArgs } = require('../compare-score');
+const { deriveCalibrationBreakpoint, parseArgs: parseCalibrationArgs } = require('../compare-calibrate');
+const { readRefSidecar, sidecarError, resolveSectionCapture, resolveSectionIndex } = require('../lib/compare-shared');
+const { CorruptCalibrationError, evaluateThreshold, flagSsimAnomalies, resolveThresholds, scorePair, validateCalibration } = require('../lib/score');
+const { CorruptStateError, acquireLock, appendEntry, assertLoopIdentity, inspectLoop, readLedger, releaseLock, resetLedger, validateLedger, writeLedger } = require('../lib/loop-ledger');
+
+module.exports = ({ assert, fixtures, test }) => {
+  const reference = path.join(fixtures, 'score-reference.png');
+  const identical = path.join(fixtures, 'score-identical.png');
+  const defect = path.join(fixtures, 'score-defect.png');
+  const dimensionMismatch = path.join(fixtures, 'score-dimension-mismatch.png');
+  const heightMismatch = path.join(fixtures, 'score-height-mismatch.png');
+  const sectionCaptureRoot = path.join(fixtures, 'section-capture');
+  const sectionCaptureSrc = path.join(sectionCaptureRoot, 'src', 'fake');
+  const sectionCapturePage = path.join(sectionCaptureSrc, 'landing.html');
+  const sectionCaptureIncludes = path.join(sectionCaptureSrc, '_includes');
+  const hashes = { desktop: 'a'.repeat(64), tablet: 'b'.repeat(64), mobile: 'c'.repeat(64) };
+  const thresholds = { desktop: 0.01, tablet: 0.01, mobile: 0.01 };
+  const identity = {
+    section: 'hero-1', captureScope: { mode: 'section-index', sectionIndex: 0 }, refHashes: hashes,
+    thresholdConfig: { source: 'calibration', thresholds },
+  };
+  const limits = { maxIterations: 5, minDelta: 0.005 };
+  const entry = (scores, pass = false) => ({ timestamp: '2026-01-01T00:00:00.000Z', scores, pass, ssimAnomalies: [] });
+
+  console.log('compare score');
+  test('identical PNGs score zero', async () => {
+    const result = await scorePair(reference, fs.readFileSync(identical));
+    assert.strictEqual(result.score, 0);
+    assert.strictEqual(result.widthMatch, true);
+    assert.strictEqual(result.heightDelta, 0);
+    assert.deepStrictEqual(result.topRegions, []);
+  });
+
+  test('defect scores above zero and localizes the correct grid cell', async () => {
+    const result = await scorePair(reference, defect);
+    assert.ok(result.score > 0);
+    assert.strictEqual(result.topRegions[0].row, 8);
+    assert.strictEqual(result.topRegions[0].column, 4);
+    assert.deepStrictEqual(result.topRegions[0].bounds, { x: 42, y: 42, width: 11, height: 6 });
+    assert.strictEqual(result.topRegions[0].mismatchRatio, 1);
+  });
+
+  test('width mismatch trips the independent width gate', async () => {
+    const result = await scorePair(reference, dimensionMismatch);
+    assert.strictEqual(result.widthMatch, false);
+    assert.strictEqual(result.heightDelta, 0);
+    assert.deepStrictEqual(result.dimensionDelta, { width: 4, height: 0 });
+  });
+
+  test('height mismatch is scored but does not trip the width gate', async () => {
+    const result = await scorePair(reference, heightMismatch);
+    assert.strictEqual(result.widthMatch, true);
+    assert.strictEqual(result.heightDelta, 4);
+    assert.deepStrictEqual(result.dimensionDelta, { width: 0, height: 4 });
+    assert.ok(result.score > 0);
+    assert.strictEqual(evaluateThreshold([result], null), null);
+    assert.strictEqual(evaluateThreshold([result], result.score), true);
+  });
+
+  test('threshold flag parses and flips aggregate pass/fail', async () => {
+    const parsed = parseArgs(['campaign', '--threshold', '0.01']);
+    assert.strictEqual(parsed.threshold, 0.01);
+
+    const identicalResult = await scorePair(reference, identical);
+    const defectResult = await scorePair(reference, defect);
+    assert.strictEqual(evaluateThreshold([identicalResult], parsed.threshold), true);
+    // Maximum-mismatch threshold is inclusive: score == threshold passes,
+    // so --threshold 0 can pass for identical images.
+    assert.strictEqual(evaluateThreshold([identicalResult], 0), true);
+    assert.strictEqual(evaluateThreshold([defectResult], defectResult.score), true);
+    assert.strictEqual(evaluateThreshold([defectResult], defectResult.score - 1e-9), false);
+    assert.strictEqual(evaluateThreshold([identicalResult], null), null);
+  });
+
+  test('score and calibration argument clamps reject unsafe values', () => {
+    assert.match(parseArgs(['campaign', '--threshold', '0.2501']).error, /0 to 0.25/);
+    assert.match(parseArgs(['campaign', '--loop', '--max-iterations', '26']).error, /1 to 25/);
+    assert.match(parseArgs(['campaign', '--loop', '--min-delta', '0']).error, /cannot be disabled/);
+    assert.strictEqual(parseArgs(['campaign', '--loop', '--min-delta', '0.005']).error, undefined);
+    assert.match(parseCalibrationArgs(['campaign', '--samples', '2']).error, /at least 3/);
+    assert.match(parseCalibrationArgs(['campaign', '--multiplier', '0']).error, /1 to 10/);
+    assert.match(parseCalibrationArgs(['campaign', '--multiplier', '11']).error, /1 to 10/);
+    assert.match(parseCalibrationArgs(['campaign', '--minimum-floor', '0.051']).error, /0 to 0.05/);
+  });
+
+  test('width gate fails independently of the optional threshold', async () => {
+    const mismatchResult = await scorePair(reference, dimensionMismatch);
+    assert.strictEqual(evaluateThreshold([mismatchResult], null), false);
+    assert.strictEqual(evaluateThreshold([mismatchResult], 1), false);
+  });
+
+  test('threshold precedence is flag, then calibration, then null', () => {
+    const calibration = { desktop: { threshold: 0.01 }, tablet: { threshold: 0.02 }, mobile: { threshold: 0.03 } };
+    assert.deepStrictEqual(resolveThresholds(0.5, calibration, ['desktop', 'tablet', 'mobile']), {
+      thresholds: { desktop: 0.5, tablet: 0.5, mobile: 0.5 }, source: 'flag',
+    });
+    assert.strictEqual(resolveThresholds(null, calibration, ['desktop', 'tablet', 'mobile']).source, 'calibration');
+    assert.deepStrictEqual(resolveThresholds(null, null, ['desktop']), { thresholds: null, source: null });
+  });
+
+  test('per-breakpoint thresholds are evaluated independently', () => {
+    const scores = {
+      desktop: { score: 0.011, widthMatch: true },
+      mobile: { score: 0.011, widthMatch: true },
+    };
+    assert.strictEqual(evaluateThreshold(scores, { desktop: 0.01, mobile: 0.02 }), false);
+    scores.desktop.score = 0.009;
+    assert.strictEqual(evaluateThreshold(scores, { desktop: 0.01, mobile: 0.02 }), true);
+  });
+
+  test('passing low-SSIM breakpoints are flagged without becoming a gate', () => {
+    const results = {
+      desktop: { score: 0.005, widthMatch: true, ssim: 0.94 },
+      tablet: { score: 0.005, widthMatch: true, ssim: 0.96 },
+    };
+    assert.deepStrictEqual(flagSsimAnomalies(results, { desktop: 0.01, tablet: 0.01 }), ['desktop']);
+    assert.strictEqual(results.desktop.ssimAnomaly, true);
+    assert.strictEqual(evaluateThreshold(results, { desktop: 0.01, tablet: 0.01 }), true);
+  });
+
+  test('readRefSidecar parses present metadata and returns null when absent', () => {
+    const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'ref-sidecar-'));
+    const sidecar = {
+      generatedBy: 'save-ref.sh',
+      scale: 1,
+      breakpoints: { tablet: { width: 820, height: 600 } },
+    };
+    fs.writeFileSync(path.join(tmpDir, 'hero-1-refs.json'), JSON.stringify(sidecar));
+    assert.deepStrictEqual(readRefSidecar(tmpDir, 'hero-1'), sidecar);
+    assert.strictEqual(readRefSidecar(tmpDir, 'missing'), null);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('sidecarError requires all three breakpoints, scale 1, positive int dims', () => {
+    const full = {
+      scale: 1,
+      breakpoints: {
+        desktop: { width: 1440, height: 800 },
+        tablet: { width: 820, height: 900 },
+        mobile: { width: 375, height: 700 },
+      },
+    };
+    assert.strictEqual(sidecarError(full), null);
+    assert.match(sidecarError(null), /missing or unreadable/);
+    assert.match(sidecarError({ ...full, scale: 1.5 }), /scale/);
+    const noTablet = { scale: 1, breakpoints: { desktop: full.breakpoints.desktop, mobile: full.breakpoints.mobile } };
+    assert.match(sidecarError(noTablet), /missing the tablet/);
+    const badDims = { scale: 1, breakpoints: { ...full.breakpoints, mobile: { width: 0, height: 700 } } };
+    assert.match(sidecarError(badDims), /invalid dimensions/);
+    // The empty/vacuous-pass hole: no breakpoints at all must error, not pass.
+    assert.match(sidecarError({ scale: 1, breakpoints: {} }), /missing the desktop/);
+  });
+
+  test('calibration uses all first-to-sample scores, their max, and refuses instability', () => {
+    assert.deepStrictEqual(deriveCalibrationBreakpoint([0.01, 0.03], { multiplier: 3, minimumFloor: 0.002, samples: 3 }), {
+      noiseFloor: 0.03, threshold: 0.09, samples: 3, sampleScores: [0.01, 0.03],
+    });
+    assert.throws(() => deriveCalibrationBreakpoint([0.01, 0.051], { multiplier: 3, minimumFloor: 0.002, samples: 3 }), /environment unstable/);
+    assert.throws(() => deriveCalibrationBreakpoint([0.05, 0.04], { multiplier: 6, minimumFloor: 0.002, samples: 3 }), /environment unstable/);
+  });
+
+  test('loop hard-stops at max iterations and recorded max cannot be raised', () => {
+    let ledger = null;
+    const localLimits = { maxIterations: 3, minDelta: 0.005 };
+    for (let i = 0; i < 3; i += 1) ledger = appendEntry(ledger, entry({ desktop: 0.3 - i * 0.1, tablet: 0.3 - i * 0.1, mobile: 0.3 - i * 0.1 }), localLimits, identity);
+    const refusal = inspectLoop(ledger, { maxIterations: 25, minDelta: 0.005 }, thresholds);
+    assert.strictEqual(refusal.exitCode, 2);
+    assert.match(refusal.stopReason, /max iterations \(3\)/);
+  });
+
+  test('same-run per-breakpoint stagnation requires improvement with no worsening', () => {
+    let ledger = appendEntry(null, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }), limits, identity);
+    ledger = appendEntry(ledger, entry({ desktop: 0.19, tablet: 0.206, mobile: 0.2 }), limits, identity);
+    assert.match(inspectLoop(ledger, limits, thresholds).stopReason, /real defect/);
+    let improving = appendEntry(null, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }), limits, identity);
+    improving = appendEntry(improving, entry({ desktop: 0.19, tablet: 0.199, mobile: 0.2 }), limits, identity);
+    assert.strictEqual(inspectLoop(improving, limits, thresholds).stopReason, null);
+    let near = appendEntry(null, entry({ desktop: 0.04, tablet: 0.04, mobile: 0.04 }), limits, identity);
+    near = appendEntry(near, entry({ desktop: 0.039, tablet: 0.039, mobile: 0.039 }), limits, identity);
+    assert.match(inspectLoop(near, limits, thresholds).stopReason, /noise floor/);
+  });
+
+  test('null pass stays null and stopped reset preserves an audit trace', () => {
+    let ledger = appendEntry(null, entry({ desktop: 0, tablet: 0, mobile: 0 }, null), limits, identity);
+    assert.strictEqual(ledger.entries[0].pass, null);
+    const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'loop-ledger-'));
+    const ledgerPath = path.join(tmpDir, 'loop.json');
+    ledger.stopReason = 'HARD STOP: test';
+    writeLedger(ledgerPath, ledger);
+    const resets = resetLedger(ledgerPath, ledger, '2026-01-02T00:00:00.000Z');
+    assert.strictEqual(fs.existsSync(ledgerPath), false);
+    assert.deepStrictEqual(resets, [{ at: '2026-01-02T00:00:00.000Z', previousStopReason: 'HARD STOP: test', previousIterations: 1 }]);
+    const fresh = appendEntry(null, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }), limits, { ...identity, resets });
+    assert.deepStrictEqual(fresh.resets, resets);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('ledger identity binds thresholds, scope, section, and ref hashes', () => {
+    const ledger = appendEntry(null, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }), limits, identity);
+    assert.doesNotThrow(() => assertLoopIdentity(ledger, identity));
+    assert.throws(() => assertLoopIdentity(ledger, { ...identity, thresholdConfig: { source: 'flag', thresholds } }), /threshold changed mid-loop/);
+    assert.throws(() => assertLoopIdentity(ledger, { ...identity, captureScope: { mode: 'full-page' } }), /capture scope changed/);
+    assert.throws(() => assertLoopIdentity(ledger, { ...identity, refHashes: { ...hashes, mobile: 'd'.repeat(64) } }), /hashes changed/);
+  });
+
+  test('ledger and calibration schemas fail closed, including invalid JSON and empty scores', () => {
+    const ledger = appendEntry(null, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }), limits, identity);
+    assert.doesNotThrow(() => validateLedger(ledger));
+    assert.throws(() => validateLedger({ ...ledger, entries: [{ ...ledger.entries[0], scores: {} }] }), CorruptStateError);
+    assert.throws(() => validateLedger({ ...ledger, entries: [{ ...ledger.entries[0], iteration: 2 }] }), CorruptStateError);
+    const calibration = Object.fromEntries(['desktop', 'tablet', 'mobile'].map((name) => [name, { noiseFloor: 0.01, threshold: 0.03, samples: 3, sampleScores: [0.005, 0.01] }]));
+    Object.assign(calibration, { loopDefaults: limits, calibratedAt: '2026-01-01T00:00:00.000Z', captureScope: identity.captureScope, refHashes: hashes });
+    assert.doesNotThrow(() => validateCalibration(calibration));
+    assert.throws(() => validateCalibration({ ...calibration, desktop: { ...calibration.desktop, threshold: 0.251 } }), CorruptCalibrationError);
+    assert.throws(() => validateCalibration({ ...calibration, desktop: { ...calibration.desktop, noiseFloor: 0.051 } }), CorruptCalibrationError);
+    const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'corrupt-ledger-'));
+    const file = path.join(tmpDir, 'loop.json');
+    fs.writeFileSync(file, '{nope');
+    assert.throws(() => readLedger(file), CorruptStateError);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('lock rejects concurrency and never auto-steals stale locks', () => {
+    const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'score-lock-'));
+    const lock = path.join(tmpDir, 'loop.lock');
+    acquireLock(lock);
+    assert.throws(() => acquireLock(lock), /another compare:score run holds the lock/);
+    const old = new Date(Date.now() - 11 * 60 * 1000);
+    fs.utimesSync(lock, old, old);
+    // No automatic steal — stale locks require explicit human removal, which
+    // eliminates the check-then-claim race entirely.
+    assert.throws(() => acquireLock(lock), /remove it with: rmdir/);
+    releaseLock(lock);
+    assert.strictEqual(fs.existsSync(lock), false);
+    acquireLock(lock);
+    releaseLock(lock);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('resetting before a hard stop still records an audit trace', () => {
+    const tmpDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'reset-trace-'));
+    const ledgerPath = path.join(tmpDir, 'loop.json');
+    const ledger = appendEntry(null, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }), limits, identity);
+    writeLedger(ledgerPath, ledger);
+    const resets = resetLedger(ledgerPath, ledger, '2026-01-02T00:00:00.000Z');
+    assert.strictEqual(resets.length, 1);
+    assert.match(resets[0].previousStopReason, /reset before a hard stop/);
+    assert.strictEqual(resets[0].previousIterations, 1);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('loop limit flags require --loop so resets cannot outrun validation', () => {
+    assert.match(parseArgs(['campaign', '--reset-loop', '--min-delta', '0']).error, /require --loop/);
+    assert.match(parseArgs(['campaign', '--max-iterations', '3']).error, /require --loop/);
+  });
+
+  test('null-threshold loop entries still hit the max-iterations stop', () => {
+    let ledger = null;
+    for (let i = 0; i < limits.maxIterations; i += 1) {
+      ledger = appendEntry(ledger, entry({ desktop: 0.2, tablet: 0.2, mobile: 0.2 }, null), limits, identity);
+    }
+    const inspection = inspectLoop(ledger, limits, null);
+    assert.strictEqual(inspection.exitCode, 2);
+    assert.match(inspection.stopReason, /max iterations/);
+  });
+
+  test('capture flags parse selector and full-page escape hatches', () => {
+    const selected = parseArgs(['campaign', 'hero-1', '--selector', '[data-hero]']);
+    assert.strictEqual(selected.selector, '[data-hero]');
+    assert.strictEqual(selected.fullPage, false);
+
+    const fullPage = parseArgs(['campaign', 'hero-1', '--full-page']);
+    assert.strictEqual(fullPage.selector, null);
+    assert.strictEqual(fullPage.fullPage, true);
+
+    assert.match(parseArgs(['campaign', '--selector']).error, /Missing value/);
+    assert.match(parseArgs(['campaign', '--selector', '#hero', '--full-page']).error, /cannot be used together/);
+  });
+
+  test('section indexes follow include order and ignore zero-section partials', () => {
+    const expectedIndexes = {
+      alpha: 0,
+      gamma: 3,
+    };
+
+    for (const [section, expectedIndex] of Object.entries(expectedIndexes)) {
+      const resolution = resolveSectionIndex({
+        pagePath: sectionCapturePage,
+        includesDir: sectionCaptureIncludes,
+        section,
+      });
+      assert.deepStrictEqual(resolution, { index: expectedIndex, reason: null });
+    }
+  });
+
+  test('zero-section target partial fails resolution instead of capturing a neighbor', () => {
+    const resolution = resolveSectionIndex({
+      pagePath: sectionCapturePage,
+      includesDir: sectionCaptureIncludes,
+      section: 'spacer',
+    });
+    assert.strictEqual(resolution.index, null);
+    assert.match(resolution.reason, /has 0 root <section> elements/);
+  });
+
+  test('multi-root target partial fails resolution (single element cannot scope it)', () => {
+    const resolution = resolveSectionIndex({
+      pagePath: sectionCapturePage,
+      includesDir: sectionCaptureIncludes,
+      section: 'beta',
+    });
+    assert.strictEqual(resolution.index, null);
+    assert.match(resolution.reason, /has 2 root <section> elements/);
+  });
+
+  test('target include nested inside a literal section is rejected', () => {
+    const nestedPage = path.join(sectionCaptureSrc, 'landing-nested.html');
+    const resolution = resolveSectionIndex({
+      pagePath: nestedPage,
+      includesDir: sectionCaptureIncludes,
+      section: 'alpha',
+    });
+    assert.strictEqual(resolution.index, null);
+    assert.match(resolution.reason, /included inside a literal <section>/);
+    const gamma = resolveSectionIndex({
+      pagePath: nestedPage,
+      includesDir: sectionCaptureIncludes,
+      section: 'gamma',
+    });
+    assert.deepStrictEqual(gamma, { index: 1, reason: null });
+  });
+
+  test('literal page-level sections before the include shift the index', () => {
+    const literalPage = path.join(sectionCaptureSrc, 'landing-literal.html');
+    const alpha = resolveSectionIndex({
+      pagePath: literalPage,
+      includesDir: sectionCaptureIncludes,
+      section: 'alpha',
+    });
+    assert.deepStrictEqual(alpha, { index: 1, reason: null });
+    const gamma = resolveSectionIndex({
+      pagePath: literalPage,
+      includesDir: sectionCaptureIncludes,
+      section: 'gamma',
+    });
+    assert.deepStrictEqual(gamma, { index: 2, reason: null });
+  });
+
+  test('section capture uses landing page and falls back when section is absent', () => {
+    const gamma = resolveSectionCapture({
+      slug: 'fake',
+      section: 'gamma',
+      projectRoot: sectionCaptureRoot,
+    });
+    assert.strictEqual(gamma.entryUrl, 'landing.html');
+    assert.strictEqual(gamma.pagePath, sectionCapturePage);
+    assert.strictEqual(gamma.sectionIndex, 3);
+    assert.strictEqual(gamma.warning, null);
+
+    const absent = resolveSectionCapture({
+      slug: 'fake',
+      section: 'absent',
+      projectRoot: sectionCaptureRoot,
+    });
+    assert.strictEqual(absent.entryUrl, 'presell.html');
+    assert.strictEqual(absent.sectionIndex, null);
+    assert.match(absent.warning, /target partial not found/);
+    assert.match(absent.warning, /Falling back to full-page capture/);
+  });
+};

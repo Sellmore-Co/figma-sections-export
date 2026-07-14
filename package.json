@@ -16,6 +16,8 @@
     "new": "bash scripts/new-section.sh",
     "fonts": "node scripts/generate-fonts-css.js",
     "compare": "node scripts/compare-ref.js",
+    "compare:score": "node scripts/compare-score.js",
+    "compare:calibrate": "node scripts/compare-calibrate.js",
     "validate": "node scripts/validate-export.js",
     "handoff": "node scripts/handoff.js",
     "infer": "node scripts/infer-section-name.js",
@@ -27,5 +29,12 @@
   },
   "dependencies": {
     "next-campaign-page-kit": "^0.2.0"
+  },
+  "devDependencies": {
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
+    "puppeteer-core": "^24.43.1",
+    "sharp": "^0.34.5",
+    "ssim.js": "^3.5.0"
   }
 }

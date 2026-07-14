@@ -136,6 +136,8 @@ npm run dev
 | `scripts/save-ref.sh` | Download reference screenshots for each breakpoint |
 | `scripts/export-node.sh` | Export a Figma node as canvas-rendered PNG (respects crop/frame) |
 | `npm run compare <slug> [ref-prefix] [port]` | Generate a Figma vs live comparison page at all 3 breakpoints; optional `ref-prefix` selects which `*-desktop.png` set in `_ref/` (see QUICKSTART) |
+| `npm run compare:calibrate <slug> [section] [port]` | Measure capture noise with at least three samples and write bounded per-breakpoint thresholds plus provenance |
+| `npm run compare:score <slug> [section] [port] [--loop]` | Score all breakpoints; loop mode binds thresholds, capture scope, and reference hashes and hard-stops unsafe remediation |
 | `npm run validate -- <slug>` | Validate local export output against the public starter-template patterns |
 | `npm run handoff -- <slug> [ref-prefix]` | Run final developer handoff checks: validate, generate compare when refs are available, compress final images, and emit the Campaigns OS source manifest |
 | `npm run compress -- <slug>` | Compress final handoff assets under `src/<slug>/assets/images/` only; does not touch `_ref/` screenshots or other campaigns |
@@ -144,6 +146,14 @@ npm run dev
 | `npm run extract -- --slug <slug> --section <name> --desktop <url> [--tablet <url>] [--mobile <url>]` | REST-based helper for FAQ accordions and explicit image-only hotspot escape hatches (see [docs/interactive-export.md](docs/interactive-export.md)) |
 | `npm run annotations -- <figma-url>` | Probe whether Dev Mode annotations / comments are reachable for the current token (see [docs/figma-annotations.md](docs/figma-annotations.md)) |
 | `npm test` | Run the offline unit + integration tests for the extraction tooling |
+
+---
+
+### Comparison audit boundary
+
+The visual score uses `pixelmatch` with its human-ratified `0.1` color threshold. This can miss color-only differences. A breakpoint that passes its mismatch threshold while SSIM is below `0.95` is marked `ssimAnomaly: true` in the score report and loop ledger and requires manual color verification.
+
+Figma reference PNGs and loop ledgers are audit-trusted artifacts, not tamper-proof storage. The score report records SHA-256 reference hashes and loop mode refuses changed hashes, scope, or thresholds mid-loop, but a shell-capable actor can still replace files. PR review is the enforcement gate for reference or ledger changes.
 
 ---
 

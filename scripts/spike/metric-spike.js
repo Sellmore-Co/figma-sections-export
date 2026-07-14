@@ -1,0 +1,167 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const {
+  normalizePair,
+  pixelmatchScore,
+  readDimensions,
+  ssimScore,
+} = require('../lib/score');
+
+const ROOT = path.join(__dirname, '..', '..');
+const GOLDEN = path.join(ROOT, 'src', 'shield', '_ref', 'hero-4-desktop.png');
+const OUT_DIR = path.join(__dirname, 'out');
+const RESULTS_PATH = path.join(__dirname, 'RESULTS.json');
+const REPORT_PATH = path.join(__dirname, 'REPORT.md');
+
+const COMPARISONS = [
+  { id: 'self', class: 'CONTROL', file: null, label: 'Golden vs itself' },
+  { id: 'translate-x-1px', class: 'NOISE', file: 'noise-translate-x-1px.png', label: '1px horizontal translate' },
+  { id: 'text-edge-aa-mild', class: 'NOISE', file: 'noise-text-edge-aa-mild.png', label: 'Localized text/vector-edge AA (mild)' },
+  { id: 'text-edge-aa-strong', class: 'NOISE', file: 'noise-text-edge-aa-strong.png', label: 'Localized text/vector-edge AA (strong)' },
+  { id: 'brightness-plus-2pct', class: 'NOISE', file: 'noise-brightness-plus-2pct.png', label: 'Global brightness +2%' },
+  { id: 'band-shift-y-24px', class: 'DEFECT', file: 'defect-band-shift-y-24px.png', label: '200px band shifted down 24px' },
+  { id: 'missing-button', class: 'DEFECT', file: 'defect-missing-button.png', label: 'Button-sized region removed' },
+  { id: 'hue-rotate-30deg', class: 'DEFECT', file: 'defect-hue-rotate-30deg.png', label: 'Whole image hue +30deg' },
+  { id: 'extra-right-strip-100px', class: 'DEFECT', file: 'defect-extra-right-strip-100px.png', label: 'Extra 100px right-side canvas strip' },
+  { id: 'text-area-scale-115pct', class: 'DEFECT', file: 'defect-text-area-scale-115pct.png', label: 'Text area scaled to 115%' },
+];
+
+function separability(rows, selector, direction) {
+  const noise = rows.filter((row) => row.class === 'NOISE');
+  const defects = rows.filter((row) => row.class === 'DEFECT');
+  const worstNoise = direction === 'higher-is-worse'
+    ? noise.reduce((a, b) => (selector(b) > selector(a) ? b : a))
+    : noise.reduce((a, b) => (selector(b) < selector(a) ? b : a));
+  const bestDefect = direction === 'higher-is-worse'
+    ? defects.reduce((a, b) => (selector(b) < selector(a) ? b : a))
+    : defects.reduce((a, b) => (selector(b) > selector(a) ? b : a));
+  const noiseBoundary = selector(worstNoise);
+  const defectBoundary = selector(bestDefect);
+  const gap = direction === 'higher-is-worse'
+    ? defectBoundary - noiseBoundary
+    : noiseBoundary - defectBoundary;
+  return {
+    direction,
+    worstNoise: { id: worstNoise.id, value: noiseBoundary },
+    bestDefect: { id: bestDefect.id, value: defectBoundary },
+    gap,
+    separates: gap > 0,
+    candidateThreshold: gap > 0 ? (noiseBoundary + defectBoundary) / 2 : null,
+  };
+}
+
+function fixed(value, digits = 6) {
+  return Number(value).toFixed(digits);
+}
+
+function renderReport(results) {
+  const rows = results.comparisons.map((row) =>
+    `| ${row.class} | ${row.label} | ${row.dimensionsMatch ? 'Yes' : `No (${row.dimensionDelta.width >= 0 ? '+' : ''}${row.dimensionDelta.width}×${row.dimensionDelta.height >= 0 ? '+' : ''}${row.dimensionDelta.height})`} | ${fixed(row.pixelmatch.threshold01.mismatchRatio)} | ${fixed(row.pixelmatch.threshold01.runtimeMs, 2)} | ${fixed(row.pixelmatch.threshold03.mismatchRatio)} | ${fixed(row.pixelmatch.threshold03.runtimeMs, 2)} | ${fixed(row.ssim.mean)} | ${fixed(row.ssim.runtimeMs, 2)} |`,
+  ).join('\n');
+
+  const items = [
+    ['Pixelmatch 0.1', results.separability.pixelmatchThreshold01, 'mismatch ratio', 'fail at or above'],
+    ['Pixelmatch 0.3', results.separability.pixelmatchThreshold03, 'mismatch ratio', 'fail at or above'],
+    ['SSIM', results.separability.ssim, 'mean SSIM', 'fail at or below'],
+  ];
+  const separationRows = items.map(([name, item, unit, policy]) => {
+    const threshold = item.candidateThreshold === null ? 'none' : `${fixed(item.candidateThreshold)} (${policy})`;
+    return `| ${name} | ${item.worstNoise.id}: ${fixed(item.worstNoise.value)} | ${item.bestDefect.id}: ${fixed(item.bestDefect.value)} | ${fixed(item.gap)} | ${item.separates ? 'Yes' : 'No'} | ${threshold} |`;
+  }).join('\n');
+
+  const separatingMetrics = items.filter(([, item]) => item.separates);
+  const eliminatedMetrics = items.filter(([, item]) => !item.separates);
+  const nominatedSummary = separatingMetrics.map(([name, item]) =>
+    `**${name}** (synthetic-corpus midpoint ${fixed(item.candidateThreshold)} — NOT a production threshold)`,
+  ).join(' and ');
+  const eliminatedSummary = eliminatedMetrics.map(([name]) => `**${name}**`).join(' and ');
+  const recommendation = separatingMetrics.length > 0
+    ? `This spike supports an ELIMINATE / NOMINATE conclusion, not a threshold. ${eliminatedSummary} are **eliminated**: they fail to separate even this favorable synthetic corpus (SSIM rates the hue defect as more similar than the tolerated 1px translation; Pixelmatch 0.3 scores the hue defect at zero). ${nominatedSummary} is **nominated** as the sole candidate metric, selected generically from every metric whose worst NOISE and best DEFECT boundaries have a positive gap. The midpoint above is parameter-dependent (see Sensitivity below) and must not be shipped as a gate; the production threshold must be calibrated from the real noise floor — repeat captures of the golden frame's live render vs the Figma ref — in the harness's threshold-calibration phase. Dimension equality must remain a separate first-class gate because even white excess canvas can be invisible to pixel metrics after padding.`
+    : `**No measured metric is a standalone pass/fail candidate** on the corrected corpus because none has a positive NOISE-to-DEFECT gap. Keep dimension equality as a separate first-class gate and retain the metrics as diagnostics only. A production pixel gate needs a broader real-capture corpus and possibly a compound color-sensitive rule; deriving one from this single frame would be overfitting.`;
+
+  const sensitivity = `## Sensitivity
+
+The synthetic edge-AA noise model has a free \`strength\` parameter, and the separability verdict depends on it: at strength 0.45 the strong AA case scores 0.017858 on Pixelmatch 0.1, but at 0.55 it scores 0.024704 — above the missing-button defect's 0.022865 — which eliminates separability. The luminance-gradient mask also cannot distinguish glyph edges from CSS boxes, icons, or photographic detail. This is why the midpoint above is labeled a synthetic-corpus artifact: the nomination of Pixelmatch 0.1 is supported (it is the only metric that separates any reasonable parameterization while the other two fail structurally), but the numeric threshold is not. Calibrate the production threshold from the empirical noise floor of real captures, and set it between that floor and the smallest defect the harness must catch.`;
+
+  return `# Image-diff metric decision spike\n\n## Golden frame\n\nThe golden frame is \`src/shield/_ref/hero-4-desktop.png\` (${results.golden.width}×${results.golden.height}). It has a complete \`hero-4\` desktop/tablet/mobile reference set and is the richest complete desktop candidate: a large natural photograph, multiple font sizes and weights, small icons/checkmarks, a high-contrast CTA, and a testimonial card. This gives the metrics textured imagery, antialiased text edges, flat-color UI, and fine detail in one frame.\n\nThe local \`src/shield/_ref/\` files are read-only inputs and remain gitignored. Generated perturbation PNGs live in \`scripts/spike/out/\` and are also gitignored.\n\n## Noise model\n\nThe former full-frame sigma-1.0 blur was removed from the tolerated NOISE class because browser font rasterization does not blur photos and backgrounds. Both replacement AA cases detect high-contrast edges with a deterministic luminance gradient, expand that mask by two pixels, and blend a Gaussian-softened value only inside the mask. The sigma-0.5 case is localized too: although mild full-frame blur can resemble resampling, localizing it makes the tolerated class specifically model glyph/vector coverage variation rather than camera/content softness.\n\n## Dimension strategy\n\nDimension equality is reported independently for every comparison as \`dimensionsMatch\` plus signed width/height deltas. For pixel scoring, both images are top-left anchored and padded to the union canvas with opaque white; no candidate pixels are cropped. Thus excess candidate content contributes to image metrics, while even an all-white extra strip still fails the explicit dimension signal. Image decode and normalization time is excluded from per-metric runtime; each runtime measures only the metric call.\n\n## Results\n\nPixelmatch values are mismatched-pixel ratios (lower is more similar). SSIM is mean structural similarity (higher is more similar). Dimension deltas are candidate minus golden. Runtimes are wall-clock milliseconds from one offline run and are comparative, not benchmarks. Raw precision is in \`RESULTS.json\`.\n\n| Class | Perturbation | Dimensions match? | Pixelmatch 0.1 | ms | Pixelmatch 0.3 | ms | Mean SSIM | ms |\n| --- | --- | :---: | ---: | ---: | ---: | ---: | ---: | ---: |\n${rows}\n\n## Separability\n\nFor Pixelmatch, the NOISE boundary is the highest mismatch ratio and the DEFECT boundary is the lowest mismatch ratio. For SSIM, the NOISE boundary is the lowest similarity and the DEFECT boundary is the highest similarity. A positive gap means a single threshold cleanly separates all ${results.comparisons.filter((row) => row.class === 'NOISE').length} NOISE cases from all ${results.comparisons.filter((row) => row.class === 'DEFECT').length} DEFECT cases. The dimension boolean is not numerically combined with these scores; the union-canvas pixels from the dimension-defect case are still part of the scalar corpus.\n\n| Metric | Worst NOISE | Best DEFECT | Gap | Separates? | Candidate threshold |\n| --- | ---: | ---: | ---: | :---: | --- |\n${separationRows}\n\n${sensitivity}\n\n## Recommendation\n\n${recommendation}\n`;
+}
+
+async function main() {
+  if (!fs.existsSync(GOLDEN)) throw new Error(`Golden frame is missing: ${path.relative(ROOT, GOLDEN)}`);
+  for (const comparison of COMPARISONS.filter((item) => item.file)) {
+    const file = path.join(OUT_DIR, comparison.file);
+    if (!fs.existsSync(file)) {
+      throw new Error(`Missing perturbation: ${path.relative(ROOT, file)}. Run generate-perturbations.js first.`);
+    }
+  }
+
+  const golden = await readDimensions(GOLDEN);
+  const width = golden.width;
+  const height = golden.height;
+  const comparisons = [];
+
+  for (const comparison of COMPARISONS) {
+    const file = comparison.file ? path.join(OUT_DIR, comparison.file) : GOLDEN;
+    const normalized = await normalizePair(GOLDEN, file);
+    const dimensionsMatch = normalized.referenceDimensions.width === normalized.candidateDimensions.width
+      && normalized.referenceDimensions.height === normalized.candidateDimensions.height;
+    const threshold01 = await pixelmatchScore(normalized.reference, normalized.candidate, 0.1);
+    const threshold03 = await pixelmatchScore(normalized.reference, normalized.candidate, 0.3);
+    const row = {
+      id: comparison.id,
+      class: comparison.class,
+      label: comparison.label,
+      file: comparison.file ? path.relative(ROOT, file) : path.relative(ROOT, GOLDEN),
+      dimensionsMatch,
+      dimensionDelta: {
+        width: normalized.candidateDimensions.width - normalized.referenceDimensions.width,
+        height: normalized.candidateDimensions.height - normalized.referenceDimensions.height,
+      },
+      dimensions: {
+        golden: normalized.referenceDimensions,
+        candidate: normalized.candidateDimensions,
+        normalizedCanvas: normalized.normalizedCanvas,
+      },
+      pixelmatch: {
+        threshold01,
+        threshold03,
+      },
+      ssim: ssimScore(normalized.reference, normalized.candidate),
+    };
+    comparisons.push(row);
+    console.log(`  scored ${comparison.class.padEnd(7)} ${comparison.id}`);
+  }
+
+  const results = {
+    spike: 'phase-1-image-diff-metric',
+    golden: {
+      file: path.relative(ROOT, GOLDEN),
+      referenceSet: ['hero-4-desktop.png', 'hero-4-tablet.png', 'hero-4-mobile.png'],
+      width,
+      height,
+    },
+    normalization: 'Top-left anchor; pad both images to union canvas with opaque white; never crop excess content.',
+    caveats: [
+      'candidateThreshold values are synthetic-corpus midpoints, not production thresholds.',
+      'The edge-AA noise strength parameter controls separability: strength 0.45 -> 0.55 moves the strong AA case from 0.017858 to 0.024704 on Pixelmatch 0.1, past the missing-button defect at 0.022865.',
+      'Production threshold must be calibrated from the real noise floor: repeat captures of the golden frame live render vs the Figma ref.',
+    ],
+    comparisons,
+    separability: {
+      pixelmatchThreshold01: separability(comparisons, (row) => row.pixelmatch.threshold01.mismatchRatio, 'higher-is-worse'),
+      pixelmatchThreshold03: separability(comparisons, (row) => row.pixelmatch.threshold03.mismatchRatio, 'higher-is-worse'),
+      ssim: separability(comparisons, (row) => row.ssim.mean, 'lower-is-worse'),
+    },
+  };
+
+  fs.writeFileSync(RESULTS_PATH, `${JSON.stringify(results, null, 2)}\n`);
+  fs.writeFileSync(REPORT_PATH, renderReport(results));
+  console.log(`\nWrote ${path.relative(ROOT, RESULTS_PATH)} and ${path.relative(ROOT, REPORT_PATH)}.`);
+}
+
+main().catch((error) => {
+  console.error(error.message);
+  process.exit(1);
+});

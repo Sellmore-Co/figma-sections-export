@@ -1,0 +1,475 @@
+{
+  "spike": "phase-1-image-diff-metric",
+  "golden": {
+    "file": "src/shield/_ref/hero-4-desktop.png",
+    "referenceSet": [
+      "hero-4-desktop.png",
+      "hero-4-tablet.png",
+      "hero-4-mobile.png"
+    ],
+    "width": 1440,
+    "height": 799
+  },
+  "normalization": "Top-left anchor; pad both images to union canvas with opaque white; never crop excess content.",
+  "caveats": [
+    "candidateThreshold values are synthetic-corpus midpoints, not production thresholds.",
+    "The edge-AA noise strength parameter controls separability: strength 0.45 -> 0.55 moves the strong AA case from 0.017858 to 0.024704 on Pixelmatch 0.1, past the missing-button defect at 0.022865.",
+    "Production threshold must be calibrated from the real noise floor: repeat captures of the golden frame live render vs the Figma ref."
+  ],
+  "comparisons": [
+    {
+      "id": "self",
+      "class": "CONTROL",
+      "label": "Golden vs itself",
+      "file": "src/shield/_ref/hero-4-desktop.png",
+      "dimensionsMatch": true,
+      "dimensionDelta": {
+        "width": 0,
+        "height": 0
+      },
+      "dimensions": {
+        "golden": {
+          "width": 1440,
+          "height": 799
+        },
+        "candidate": {
+          "width": 1440,
+          "height": 799
+        },
+        "normalizedCanvas": {
+          "width": 1440,
+          "height": 799
+        }
+      },
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 3.412791
+        },
+        "threshold03": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 0.539583
+        }
+      },
+      "ssim": {
+        "mean": 1,
+        "runtimeMs": 94.238291
+      }
+    },
+    {
+      "id": "translate-x-1px",
+      "class": "NOISE",
+      "label": "1px horizontal translate",
+      "file": "scripts/spike/out/noise-translate-x-1px.png",
+      "dimensionsMatch": true,
+      "dimensionDelta": {
+        "width": 0,
+        "height": 0
+      },
+      "dimensions": {
+        "golden": {
+          "width": 1440,
+          "height": 799
+        },
+        "candidate": {
+          "width": 1440,
+          "height": 799
+        },
+        "normalizedCanvas": {
+          "width": 1440,
+          "height": 799
+        }
+      },
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 15149,
+          "mismatchRatio": 0.013166631900987345,
+          "runtimeMs": 13.249125
+        },
+        "threshold03": {
+          "mismatchPixels": 7830,
+          "mismatchRatio": 0.006805381727158949,
+          "runtimeMs": 8.03025
+        }
+      },
+      "ssim": {
+        "mean": 0.9704949846218931,
+        "runtimeMs": 68.278458
+      }
+    },
+    {
+      "id": "text-edge-aa-mild",
+      "class": "NOISE",
+      "label": "Localized text/vector-edge AA (mild)",
+      "file": "scripts/spike/out/noise-text-edge-aa-mild.png",
+      "dimensionsMatch": true,
+      "dimensionDelta": {
+        "width": 0,
+        "height": 0
+      },
+      "dimensions": {
+        "golden": {
+          "width": 1440,
+          "height": 799
+        },
+        "candidate": {
+          "width": 1440,
+          "height": 799
+        },
+        "normalizedCanvas": {
+          "width": 1440,
+          "height": 799
+        }
+      },
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 1421,
+          "mismatchRatio": 0.0012350507578918091,
+          "runtimeMs": 2.246208
+        },
+        "threshold03": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 2.295459
+        }
+      },
+      "ssim": {
+        "mean": 0.9997198284419176,
+        "runtimeMs": 55.133125
+      }
+    },
+    {
+      "id": "text-edge-aa-strong",
+      "class": "NOISE",
+      "label": "Localized text/vector-edge AA (strong)",
+      "file": "scripts/spike/out/noise-text-edge-aa-strong.png",
+      "dimensionsMatch": true,
+      "dimensionDelta": {
+        "width": 0,
+        "height": 0
+      },
+      "dimensions": {
+        "golden": {
+          "width": 1440,
+          "height": 799
+        },
+        "candidate": {
+          "width": 1440,
+          "height": 799
+        },
+        "normalizedCanvas": {
+          "width": 1440,
+          "height": 799
+        }
+      },
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 20547,
+          "mismatchRatio": 0.017858260325406758,
+          "runtimeMs": 4.754958
+        },
+        "threshold03": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 2.026542
+        }
+      },
+      "ssim": {
+        "mean": 0.9984924947113426,
+        "runtimeMs": 55.925083
+      }
+    },
+    {
+      "id": "brightness-plus-2pct",
+      "class": "NOISE",
+      "label": "Global brightness +2%",
+      "file": "scripts/spike/out/noise-brightness-plus-2pct.png",
+      "dimensionsMatch": true,
+      "dimensionDelta": {
+        "width": 0,
+        "height": 0
+      },
+      "dimensions": {
+        "golden": {
+          "width": 1440,
+          "height": 799
+        },
+        "candidate": {
+          "width": 1440,
+          "height": 799
+        },
+        "normalizedCanvas": {
+          "width": 1440,
+          "height": 799
+        }
+      },
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 3.756041
+        },
+        "threshold03": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 3.827917
+        }
+      },
+      "ssim": {
+        "mean": 0.9965973438889881,
+        "runtimeMs": 56.1555
+      }
+    },
+    {
+      "id": "band-shift-y-24px",
+      "class": "DEFECT",
+      "label": "200px band shifted down 24px",
+      "file": "scripts/spike/out/defect-band-shift-y-24px.png",
+      "dimensionsMatch": true,
+      "dimensionDelta": {
+        "width": 0,
+        "height": 0
+      },
+      "dimensions": {
+        "golden": {
+          "width": 1440,
+          "height": 799
+        },
+        "candidate": {
+          "width": 1440,
+          "height": 799
+        },
+        "normalizedCanvas": {
+          "width": 1440,
+          "height": 799
+        }
+      },
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 70735,
+          "mismatchRatio": 0.06147875816993464,
+          "runtimeMs": 11.111334
+        },
+        "threshold03": {
+          "mismatchPixels": 42279,
+          "mismatchRatio": 0.03674645390070922,
+          "runtimeMs": 6.422791
+        }
+      },
+      "ssim": {
+        "mean": 0.794459572273726,
+        "runtimeMs": 62.169667
+      }
+    },
+    {
+      "id": "missing-button",
+      "class": "DEFECT",
+      "label": "Button-sized region removed",
+      "file": "scripts/spike/out/defect-missing-button.png",
+      "dimensionsMatch": true,
+      "dimensionDelta": {
+        "width": 0,
+        "height": 0
+      },
+      "dimensions": {
+        "golden": {
+          "width": 1440,
+          "height": 799
+        },
+        "candidate": {
+          "width": 1440,
+          "height": 799
+        },
+        "normalizedCanvas": {
+          "width": 1440,
+          "height": 799
+        }
+      },
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 26307,
+          "mismatchRatio": 0.022864518147684604,
+          "runtimeMs": 2.699
+        },
+        "threshold03": {
+          "mismatchPixels": 26287,
+          "mismatchRatio": 0.02284713530802392,
+          "runtimeMs": 2.644041
+        }
+      },
+      "ssim": {
+        "mean": 0.9738226911036579,
+        "runtimeMs": 59.765583
+      }
+    },
+    {
+      "id": "hue-rotate-30deg",
+      "class": "DEFECT",
+      "label": "Whole image hue +30deg",
+      "file": "scripts/spike/out/defect-hue-rotate-30deg.png",
+      "dimensionsMatch": true,
+      "dimensionDelta": {
+        "width": 0,
+        "height": 0
+      },
+      "dimensions": {
+        "golden": {
+          "width": 1440,
+          "height": 799
+        },
+        "candidate": {
+          "width": 1440,
+          "height": 799
+        },
+        "normalizedCanvas": {
+          "width": 1440,
+          "height": 799
+        }
+      },
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 177382,
+          "mismatchRatio": 0.1541701432345988,
+          "runtimeMs": 24.749833
+        },
+        "threshold03": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 3.35925
+        }
+      },
+      "ssim": {
+        "mean": 0.9983224510247589,
+        "runtimeMs": 51.407917
+      }
+    },
+    {
+      "id": "extra-right-strip-100px",
+      "class": "DEFECT",
+      "label": "Extra 100px right-side canvas strip",
+      "file": "scripts/spike/out/defect-extra-right-strip-100px.png",
+      "dimensionsMatch": false,
+      "dimensionDelta": {
+        "width": 100,
+        "height": 0
+      },
+      "dimensions": {
+        "golden": {
+          "width": 1440,
+          "height": 799
+        },
+        "candidate": {
+          "width": 1540,
+          "height": 799
+        },
+        "normalizedCanvas": {
+          "width": 1540,
+          "height": 799
+        }
+      },
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 79900,
+          "mismatchRatio": 0.06493506493506493,
+          "runtimeMs": 3.292458
+        },
+        "threshold03": {
+          "mismatchPixels": 0,
+          "mismatchRatio": 0,
+          "runtimeMs": 1.722625
+        }
+      },
+      "ssim": {
+        "mean": 0.9855885314810663,
+        "runtimeMs": 60.163708
+      }
+    },
+    {
+      "id": "text-area-scale-115pct",
+      "class": "DEFECT",
+      "label": "Text area scaled to 115%",
+      "file": "scripts/spike/out/defect-text-area-scale-115pct.png",
+      "dimensionsMatch": true,
+      "dimensionDelta": {
+        "width": 0,
+        "height": 0
+      },
+      "dimensions": {
+        "golden": {
+          "width": 1440,
+          "height": 799
+        },
+        "candidate": {
+          "width": 1440,
+          "height": 799
+        },
+        "normalizedCanvas": {
+          "width": 1440,
+          "height": 799
+        }
+      },
+      "pixelmatch": {
+        "threshold01": {
+          "mismatchPixels": 33694,
+          "mismatchRatio": 0.02928486997635934,
+          "runtimeMs": 4.643875
+        },
+        "threshold03": {
+          "mismatchPixels": 31610,
+          "mismatchRatio": 0.027473578083715755,
+          "runtimeMs": 4.058041
+        }
+      },
+      "ssim": {
+        "mean": 0.8397567364453032,
+        "runtimeMs": 51.419667
+      }
+    }
+  ],
+  "separability": {
+    "pixelmatchThreshold01": {
+      "direction": "higher-is-worse",
+      "worstNoise": {
+        "id": "text-edge-aa-strong",
+        "value": 0.017858260325406758
+      },
+      "bestDefect": {
+        "id": "missing-button",
+        "value": 0.022864518147684604
+      },
+      "gap": 0.005006257822277847,
+      "separates": true,
+      "candidateThreshold": 0.02036138923654568
+    },
+    "pixelmatchThreshold03": {
+      "direction": "higher-is-worse",
+      "worstNoise": {
+        "id": "translate-x-1px",
+        "value": 0.006805381727158949
+      },
+      "bestDefect": {
+        "id": "hue-rotate-30deg",
+        "value": 0
+      },
+      "gap": -0.006805381727158949,
+      "separates": false,
+      "candidateThreshold": null
+    },
+    "ssim": {
+      "direction": "lower-is-worse",
+      "worstNoise": {
+        "id": "translate-x-1px",
+        "value": 0.9704949846218931
+      },
+      "bestDefect": {
+        "id": "hue-rotate-30deg",
+        "value": 0.9983224510247589
+      },
+      "gap": -0.02782746640286582,
+      "separates": false,
+      "candidateThreshold": null
+    }
+  }
+}
