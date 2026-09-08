@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { writeManifest } = require('./write-handoff-manifest');
+const { describeScreenshots, parsePageIdArgs, writeManifest } = require('./write-handoff-manifest');
 
 const root = path.resolve(__dirname, '..');
 const args = process.argv.slice(2);
@@ -63,18 +63,22 @@ if (noCompress) {
 
 console.log('\n[handoff] Writing campaigns-os handoff manifest');
 try {
-  const { manifest, outPath } = writeManifest({
+  const { manifest, outPath, warnings } = writeManifest({
     campaignDir,
     slug,
     generatorRoot: root,
     pageIdOverrides,
   });
   const relPath = toPosix(path.relative(root, outPath));
+  for (const warning of warnings) console.warn(`[handoff] WARNING: ${warning}`);
   if (manifest.pages.length === 0) {
     console.warn(`[handoff] ${relPath} written with empty pages[] — no landing.html or presell.html detected; campaigns-os will treat this as collect-inputs.`);
   } else {
     const summary = manifest.pages.map((p) => `${p.page_id} (${p.path})`).join(', ');
     console.log(`[handoff] ${relPath} — ${summary}`);
+    for (const page of manifest.pages) {
+      console.log(`[handoff]   ${page.page_id} screenshots: ${describeScreenshots(page)}`);
+    }
   }
 } catch (error) {
   console.error(`[handoff] Manifest write failed: ${error.message}`);
@@ -148,48 +152,25 @@ function hasCompressibleImages(dir) {
 }
 
 function parseArgs(rawArgs) {
+  const parsed = parsePageIdArgs(rawArgs, (message) => {
+    console.error(`[handoff] ${message}`);
+    process.exit(1);
+  });
   const out = {
     flags: new Set(),
     positional: [],
-    pageIdOverrides: new Map(),
+    pageIdOverrides: parsed.pageIdOverrides,
   };
 
-  for (let index = 0; index < rawArgs.length; index += 1) {
-    const arg = rawArgs[index];
-    if (arg === '--page-id') {
-      const value = rawArgs[index + 1];
-      if (!value || value.startsWith('--')) {
-        console.error('[handoff] --page-id requires a value, e.g. --page-id landing=page_most7ygt_415');
-        process.exit(1);
-      }
-      addPageIdOverride(out.pageIdOverrides, value);
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith('--page-id=')) {
-      addPageIdOverride(out.pageIdOverrides, arg.slice('--page-id='.length));
-      continue;
-    }
-
+  for (const arg of parsed.rest) {
     if (arg.startsWith('--')) {
       out.flags.add(arg);
       continue;
     }
-
     out.positional.push(arg);
   }
 
   return out;
-}
-
-function addPageIdOverride(overrides, value) {
-  const match = value.match(/^([^=:]+)[=:](.+)$/);
-  if (!match || !match[1].trim() || !match[2].trim()) {
-    console.error(`[handoff] Invalid --page-id value "${value}". Use <page>=<CampaignSpec page id>, e.g. landing=page_most7ygt_415.`);
-    process.exit(1);
-  }
-  overrides.set(match[1].trim(), match[2].trim());
 }
 
 function toPosix(value) {
@@ -207,7 +188,9 @@ Runs final developer handoff checks:
   - validates the export
   - generates the compare page when one ref set exists, or when [section] is provided
   - compresses final JPG, PNG, and WebP assets unless --no-compress is passed
-  - writes .campaigns-os/source-html-manifest.json for Campaigns OS source intake
+  - writes .campaigns-os/source-html-manifest.json for Campaigns OS source intake,
+    stitching the per-section Figma renders in _ref/ into page-level desktop and
+    mobile screenshots under _ref/pages/ (the campaigns-os 1.20 intake gate)
 
 Page IDs default to filename-derived values such as "landing" and "presell".
 Use --page-id <page>=<id> when the CampaignSpec has generated page ids.
