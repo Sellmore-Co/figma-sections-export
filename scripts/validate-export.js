@@ -295,7 +295,11 @@ function validateManifestProvenance(campaignDir, relManifest, manifest) {
 // campaigns-os 1.20 blocks intake (DESIGN_SOURCE_PACKAGE_NOT_READY) unless every
 // page has an available desktop AND mobile source screenshot. Fail here so a
 // local PASS predicts an intake pass. Width is a warning only: the gate does
-// not check it, and Figma frames legitimately vary (375 vs 390 mobile).
+// not check it, and the refs on disk are not all 1x. save-ref.sh rendered at
+// scale=1.5 until 2c56453 (July 2026), so every ref set saved before then is
+// 2160 / 563 px wide and a strict 1440 / 375 rule would fail all of them.
+// Mixed 1x and 1.5x refs on one page are still refused at stitch time, with
+// the widths named, because that page would have a jagged edge.
 function validateManifestScreenshots(campaignDir, relManifest, manifest) {
   if (!manifest.producer_provenance) return; // legacy manifest, pre-provenance
   for (const page of manifest.pages) {

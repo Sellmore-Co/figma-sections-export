@@ -122,6 +122,10 @@ function newestMtime(files) {
 // is assembled from section includes; otherwise uses a whole-page ref named
 // after the page (presells are exported whole, so `_ref/presell-<viewport>.png`).
 function buildPageScreenshot({ campaignDir, pageName, pagePath, viewport, sections }) {
+  // A previous run may have stitched this viewport. Remove it first so an
+  // unavailable record is never accompanied by a stale image on disk.
+  fs.rmSync(pageRefPath(campaignDir, pageName, viewport), { force: true });
+
   if (sections.length === 0) {
     const direct = refPath(campaignDir, pageName, viewport);
     if (!fs.existsSync(direct)) {

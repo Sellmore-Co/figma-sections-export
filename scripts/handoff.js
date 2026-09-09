@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { describeScreenshots, parsePageIdArgs, writeManifest } = require('./write-handoff-manifest');
+const { REQUIRED_VIEWPORTS } = require('./lib/page-screenshots');
 
 const root = path.resolve(__dirname, '..');
 const args = process.argv.slice(2);
@@ -37,6 +38,15 @@ if (!fs.existsSync(campaignDir)) {
 }
 
 console.log(`[handoff] Checking ${slug}`);
+
+// The manifest is rewritten at the end of this run. A previous run that ended
+// blocked (missing screenshot proof) left one that validate would reject, so
+// every later handoff would fail at the validate step before it could fix it.
+const previousManifest = path.join(campaignDir, '.campaigns-os', 'source-html-manifest.json');
+if (fs.existsSync(previousManifest)) {
+  fs.rmSync(previousManifest);
+  console.log('[handoff] Removed the previous source-html manifest; it is rewritten at the end of this run.');
+}
 
 runStep('Validate export', ['run', 'validate', '--', slug]);
 
@@ -78,6 +88,17 @@ try {
     console.log(`[handoff] ${relPath} — ${summary}`);
     for (const page of manifest.pages) {
       console.log(`[handoff]   ${page.page_id} screenshots: ${describeScreenshots(page)}`);
+    }
+    // validate ran before the manifest existed, so it could not see these.
+    // campaigns-os 1.20 blocks intake without desktop + mobile proof; do not
+    // print "Ready for developer handoff" over a manifest that would block.
+    const missing = manifest.pages.flatMap((p) => (p.screenshots || [])
+      .filter((s) => REQUIRED_VIEWPORTS.includes(s.viewport) && s.availability !== 'available')
+      .map((s) => `${p.page_id} ${s.viewport}: ${s.unavailable_reason}`));
+    if (missing.length) {
+      missing.forEach((m) => console.error(`[handoff] ERROR: ${m}`));
+      console.error('[handoff] Missing source screenshot proof; campaigns-os intake would block. Save the refs named above and re-run handoff.');
+      process.exit(1);
     }
   }
 } catch (error) {

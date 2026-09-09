@@ -115,6 +115,8 @@ Each entry follows the campaigns-os `sourceScreenshot` record (`schemas/source-h
 
 A missing viewport is written as an `unavailable_render` entry, never omitted, so the consumer can tell "not captured" from "not linked". Tablet is optional in the gate; desktop and mobile are required.
 
+campaigns-os records the `path` and never opens or copies the file: the Design Source Package points back at the source root, and the polish gate only checks the string is non-empty. A handoff shipped without `_ref/pages/` is therefore a dangling path nothing notices today. Keep `_ref/` with the export until a consumer starts reading the file.
+
 `browser` and `device_profile` are deliberately left empty. campaigns-os describes a source screenshot as a browser render of a standalone HTML document; a stitched Figma render serves the same purpose (a picture of the design the build must preserve) but is not that, and `notes` says so, so the consumer's trust field stays honest.
 
 The stitch is refused, with the reason recorded, when the section refs for a viewport have different widths. A page with a jagged edge is not a picture of the design; re-export the odd section at the same frame width.
@@ -139,18 +141,15 @@ If the manifest is absent, behavior is unchanged from today: campaigns-os falls 
 - Every `landing.html` / `presell.html` on disk should be listed in `pages[]` (warning if not — partial campaigns are valid, but unintended drift should surface).
 - Duplicate `page_id` entries are an error.
 - When `producer_provenance` is present for Campaigns OS semantic handoff, `source_type` must be `semantic_figma_export`, `screenshot_fallback_used` must be `false`, and `section_exports[]` must not contain explicit `hotspot` image-slice exports. Hotspots are an escape hatch for image-only strips, not semantic source material.
-- When `producer_provenance` is present, every page must carry `screenshots[]` with an **available** `desktop` and `mobile` entry whose file exists, whose sha256 matches, and whose recorded width and height match the PNG. A missing or unavailable entry is an error that quotes the recorded `unavailable_reason`, so a local PASS predicts a campaigns-os intake pass. A desktop width other than 1440px, or a mobile width other than 375px or 390px, is a warning: the gate does not check width, and Figma frames legitimately vary.
+- When `producer_provenance` is present, every page must carry `screenshots[]` with an **available** `desktop` and `mobile` entry whose file exists, whose sha256 matches, and whose recorded width and height match the PNG. A missing or unavailable entry is an error that quotes the recorded `unavailable_reason`, so a local PASS predicts a campaigns-os intake pass. A desktop width other than 1440px, or a mobile width other than 375px or 390px, is a warning, not an error: the gate does not check width, and the refs on disk are not all 1x. `save-ref.sh` rendered at `scale=1.5` until commit 2c56453 (July 2026), so every ref set saved before then is 2160 / 563 px wide and a strict rule would fail all of them. Mixed 1x and 1.5x refs on one page are still refused at stitch time with the widths named.
 
 A missing manifest is **not** an error during validate — the manifest is a handoff artifact and validate runs throughout the iteration loop.
 
 ## `mixed_figma_export`
 
-`producer_provenance.source_type` is `mixed_figma_export` whenever the export log holds a `hotspot` entry, and campaigns-os accepts only `semantic_figma_export`. That is the gate working as designed: a hotspot is an image slice with baked text, not semantic source material. The remedy is one of:
+`producer_provenance.source_type` is `mixed_figma_export` whenever the export log holds a `hotspot` entry, and campaigns-os accepts only `semantic_figma_export`. That is the gate working as designed: a hotspot is an image slice with baked text, not semantic source material. The remedy is to re-export the hotspot section through the semantic path (the default `get_design_context` flow, or `npm run extract` with `--type accordion` for FAQ-style sections), remove its `hotspot` entry from `.campaigns-os/source-export-log.json`, and re-run handoff.
 
-- re-export the hotspot section through the semantic path (the default `get_design_context` flow, or `npm run extract` with `--type accordion` for FAQ-style sections), then re-run handoff; or
-- leave the section out of the semantic handoff by listing it with a `skip_reason` on the manifest page entry (campaigns-os accepts declared skips since 2026-08-26), and hand the strip to the build as an image asset instead.
-
-Do not edit `source_type` by hand; `npm run validate` recomputes provenance from the export log and files on disk.
+Do not edit `source_type` in the manifest by hand: handoff rewrites the whole file from the export log and the files on disk, and `npm run validate` checks the recorded values against that log, so a hand edit is either overwritten or flagged.
 
 ## Versioning
 

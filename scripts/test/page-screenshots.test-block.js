@@ -214,6 +214,47 @@ module.exports = function registerPageScreenshotTests({ assert, fixtures, test }
     }
   });
 
+  test('a viewport that becomes unavailable removes its stale stitched PNG', () => {
+    const dir = makeCampaign();
+    try {
+      const stale = path.join(dir, '_ref', PAGES_DIR, 'landing-desktop.png');
+      buildManifest({ campaignDir: dir, slug: 'shots', generatorRoot: GENERATOR_ROOT });
+      assert.ok(fs.existsSync(stale));
+      fs.rmSync(path.join(dir, '_ref', 'benefits-2-desktop.png'));
+      const manifest = buildManifest({ campaignDir: dir, slug: 'shots', generatorRoot: GENERATOR_ROOT });
+      assert.strictEqual(shot(manifest.pages[0], 'desktop').availability, 'unavailable');
+      assert.ok(!fs.existsSync(stale), 'stale stitched PNG should be removed');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('handoff exits non-zero when a required screenshot is missing', () => {
+    // handoff.js resolves src/<slug> under the repo root, so the fixture must live there.
+    const slug = `fse-shots-handoff-${process.pid}`;
+    const dir = path.join(GENERATOR_ROOT, 'src', slug);
+    const src = makeCampaign();
+    try {
+      fs.cpSync(src, dir, { recursive: true });
+      let error = null;
+      try {
+        execFileSync('node', [path.join(__dirname, '..', 'handoff.js'), slug, '--no-compress'], { stdio: 'pipe', encoding: 'utf8' });
+      } catch (caught) {
+        error = caught;
+      }
+      assert.ok(error, 'expected handoff.js to fail without a mobile screenshot');
+      assert.match(error.stderr, /\[handoff\] ERROR: landing mobile: no mobile render for section\(s\) benefits-2/);
+      assert.ok(!/Ready for developer handoff/.test(error.stdout));
+
+      solidPng(path.join(dir, '_ref', 'benefits-2-mobile.png'), 375, 5, [9, 9, 9]);
+      const stdout = execFileSync('node', [path.join(__dirname, '..', 'handoff.js'), slug, '--no-compress'], { stdio: 'pipe', encoding: 'utf8' });
+      assert.match(stdout, /Ready for developer handoff/);
+    } finally {
+      fs.rmSync(src, { recursive: true, force: true });
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('validate-export warns, not fails, on a non-canonical frame width', () => {
     const dir = makeCampaign();
     try {
