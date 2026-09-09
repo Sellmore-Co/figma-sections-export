@@ -6,6 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { Liquid } = require('liquidjs');
 const { SCHEMA_VERSION: MANIFEST_SCHEMA_VERSION, PAGE_DETECTORS } = require('./write-handoff-manifest');
+const { REQUIRED_VIEWPORTS, readPngHeader } = require('./lib/page-screenshots');
 const { extractFontUsages, isSafeFamily, parseFontFaces } = require('./font-contract');
 
 const root = path.resolve(__dirname, '..');
@@ -28,6 +29,7 @@ for (const arg of args) {
 
 const errors = [];
 const warnings = [];
+const CANONICAL_WIDTHS = { desktop: [1440], mobile: [375, 390] };
 const engine = new Liquid({ strictFilters: false, strictVariables: false });
 
 const scanRoots = resolveTargets(targets);
@@ -72,7 +74,8 @@ Checks exported local campaigns for:
   - landing handoff files under landing.html and _includes/landing/
   - Swiper/accordion/expandable/video markup that bypasses shared data-* contracts
   - missing reference wrappers for landing and presell pages
-  - source-html manifest (.campaigns-os/source-html-manifest.json) consistency when present`);
+  - source-html manifest (.campaigns-os/source-html-manifest.json) consistency when present,
+    including desktop + mobile source screenshots per page (campaigns-os 1.20 intake gate)`);
 }
 
 function resolveTargets(rawTargets) {
@@ -226,6 +229,7 @@ function validateHandoffManifest(campaignDir) {
 
   validateManifestProvenance(campaignDir, relManifest, manifest);
   validateManifestFiles(campaignDir, relManifest, manifest);
+  validateManifestScreenshots(campaignDir, relManifest, manifest);
 
   // Inverse check: any landing.html / presell.html on disk should be in the manifest.
   for (const detector of PAGE_DETECTORS) {
@@ -285,6 +289,79 @@ function validateManifestProvenance(campaignDir, relManifest, manifest) {
         warnings.push(`${relManifest}: section export "${section.section || '(unknown)'}" has no node_ids`);
       }
     }
+  }
+}
+
+// campaigns-os 1.20 blocks intake (DESIGN_SOURCE_PACKAGE_NOT_READY) unless every
+// page has an available desktop AND mobile source screenshot. Fail here so a
+// local PASS predicts an intake pass. Width is a warning only: the gate does
+// not check it, and the refs on disk are not all 1x. save-ref.sh rendered at
+// scale=1.5 until 2c56453 (July 2026), so every ref set saved before then is
+// 2160 / 563 px wide and a strict 1440 / 375 rule would fail all of them.
+// Mixed 1x and 1.5x refs on one page are still refused at stitch time, with
+// the widths named, because that page would have a jagged edge.
+function validateManifestScreenshots(campaignDir, relManifest, manifest) {
+  if (!manifest.producer_provenance) return; // legacy manifest, pre-provenance
+  for (const page of manifest.pages) {
+    if (!page || typeof page !== 'object' || !page.page_id) continue;
+    const label = `${relManifest}: page "${page.page_id}"`;
+    if (!Array.isArray(page.screenshots)) {
+      errors.push(`${label} has no screenshots[] — re-run \`npm run handoff -- <slug>\` so the per-section _ref/ renders are stitched into desktop + mobile page screenshots (campaigns-os 1.20 intake gate)`);
+      continue;
+    }
+    const byViewport = new Map();
+    for (const shot of page.screenshots) {
+      if (!shot || typeof shot !== 'object' || !shot.viewport) {
+        errors.push(`${label} screenshots[] contains an entry without a viewport`);
+        continue;
+      }
+      if (byViewport.has(shot.viewport)) errors.push(`${label} has more than one ${shot.viewport} screenshot entry`);
+      byViewport.set(shot.viewport, shot);
+    }
+    for (const viewport of REQUIRED_VIEWPORTS) {
+      const shot = byViewport.get(viewport);
+      if (!shot) {
+        errors.push(`${label} has no ${viewport} screenshot entry — campaigns-os intake requires desktop and mobile source proof`);
+        continue;
+      }
+      if (shot.availability !== 'available' || shot.kind !== 'source_screenshot') {
+        errors.push(`${label} ${viewport} screenshot is not available: ${shot.unavailable_reason || 'no reason recorded'}`);
+        continue;
+      }
+      validateScreenshotFile(campaignDir, label, shot);
+    }
+    const tablet = byViewport.get('tablet');
+    if (tablet && tablet.availability === 'available') validateScreenshotFile(campaignDir, label, tablet);
+  }
+}
+
+function validateScreenshotFile(campaignDir, label, shot) {
+  const { viewport } = shot;
+  if (!shot.path) {
+    errors.push(`${label} ${viewport} screenshot has no path`);
+    return;
+  }
+  const target = path.join(campaignDir, shot.path);
+  if (!fs.existsSync(target)) {
+    errors.push(`${label} ${viewport} screenshot "${shot.path}" does not exist`);
+    return;
+  }
+  if (!/^(sha256:)?[0-9a-f]{64}$/.test(String(shot.sha256 || ''))) {
+    errors.push(`${label} ${viewport} screenshot "${shot.path}" has no valid sha256`);
+  } else if (sha256File(target) !== String(shot.sha256).replace(/^sha256:/, '')) {
+    errors.push(`${label} ${viewport} screenshot "${shot.path}" hash mismatch — re-run handoff after changing _ref/ renders`);
+  }
+  const dims = readPngHeader(target);
+  if (!dims) {
+    errors.push(`${label} ${viewport} screenshot "${shot.path}" is not a PNG`);
+    return;
+  }
+  if (shot.width !== dims.width || shot.height !== dims.height) {
+    errors.push(`${label} ${viewport} screenshot "${shot.path}" records ${shot.width}x${shot.height} but the file is ${dims.width}x${dims.height}`);
+  }
+  const canonical = CANONICAL_WIDTHS[viewport];
+  if (canonical && !canonical.includes(dims.width)) {
+    warnings.push(`${label} ${viewport} screenshot is ${dims.width}px wide; the canonical ${viewport} frame width is ${canonical.join(' or ')}px`);
   }
 }
 
