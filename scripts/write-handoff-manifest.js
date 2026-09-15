@@ -25,7 +25,16 @@
 //     "material_fingerprint": "..."
 //   },
 //   "pages": [
-//     { "page_id": "landing", "path": "landing.html", "page_type": "landing", "page_url": "", "source_hash": "..." },
+//     { "page_id": "landing", "path": "landing.html", "page_type": "landing", "page_url": "", "source_hash": "...",
+//       "screenshot_source": "stitched_figma_section_renders",
+//       "stitched_sections": ["hero-1", "benefits-2"],
+//       "screenshots": [
+//         { "id": "source-landing-desktop", "kind": "source_screenshot", "viewport": "desktop",
+//           "availability": "available", "path": "_ref/pages/landing-desktop.png",
+//           "sha256": "...", "width": 1440, "height": 5120, "captured_at": "ISO-8601", "notes": "Stitched from ..." },
+//         { "id": "source-landing-mobile", "kind": "unavailable_render", "viewport": "mobile",
+//           "availability": "unavailable", "unavailable_reason": "no mobile render for section(s) hero-1: ..." }
+//       ] },
 //     { "page_id": "presell", "path": "presell.html", "page_type": "presell", "page_url": "presell", "source_hash": "..." }
 //   ],
 //   "files": [
@@ -36,6 +45,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { buildPageScreenshots } = require('./lib/page-screenshots');
 
 const SCHEMA_VERSION = 'source-html-manifest/v0';
 
@@ -44,19 +54,28 @@ const PAGE_DETECTORS = [
   { page_id: 'presell', filename: 'presell.html', page_type: 'presell' },
 ];
 
-function detectPages(campaignDir, pageIdOverrides = new Map()) {
+function detectPages(campaignDir, pageIdOverrides = new Map(), { screenshots = true, warnings = [] } = {}) {
   const pages = [];
   PAGE_DETECTORS.forEach((candidate, index) => {
     const full = path.join(campaignDir, candidate.filename);
     if (fs.existsSync(full)) {
+      const resolved = resolvePageId(candidate, index, pageIdOverrides);
       const page = {
-        page_id: resolvePageId(candidate, index, pageIdOverrides),
+        page_id: resolved.page_id,
         path: candidate.filename,
         page_type: candidate.page_type,
         source_hash: sha256File(full),
       };
       const pageUrl = pageUrlFor(candidate.filename);
       if (pageUrl) page.page_url = pageUrl;
+      if (!resolved.overridden) {
+        // campaigns-os attaches pages[].screenshots[] only when page_id equals
+        // the CampaignSpec page id. Under the page_type+ordinal fallback the
+        // page still maps, but its screenshots are dropped and confidence pins
+        // at medium — the 1.20 gate then blocks for a page that has proof.
+        warnings.push(`page "${candidate.filename}" uses the default page_id "${resolved.page_id}"; campaigns-os binds screenshots[] only when this equals the CampaignSpec page id — pass --page-id ${resolved.page_id}=<spec page id> if the spec uses generated ids`);
+      }
+      if (screenshots) Object.assign(page, buildPageScreenshots({ campaignDir, page }));
       pages.push(page);
     }
   });
@@ -72,10 +91,10 @@ function resolvePageId(candidate, index, pageIdOverrides) {
   ];
 
   for (const key of keys) {
-    if (pageIdOverrides.has(key)) return pageIdOverrides.get(key);
+    if (pageIdOverrides.has(key)) return { page_id: pageIdOverrides.get(key), overridden: true };
   }
 
-  return candidate.page_id;
+  return { page_id: candidate.page_id, overridden: false };
 }
 
 function pageUrlFor(filename) {
@@ -95,8 +114,8 @@ function readPackageVersion(root) {
   }
 }
 
-function buildManifest({ campaignDir, slug, generatorRoot, pageIdOverrides }) {
-  const pages = detectPages(campaignDir, pageIdOverrides);
+function buildManifest({ campaignDir, slug, generatorRoot, pageIdOverrides, screenshots = true, warnings = [] }) {
+  const pages = detectPages(campaignDir, pageIdOverrides, { screenshots, warnings });
   const files = collectMaterialFiles(campaignDir);
   const exportLog = readExportLog(campaignDir);
   const producerProvenance = buildProducerProvenance({
@@ -118,15 +137,59 @@ function buildManifest({ campaignDir, slug, generatorRoot, pageIdOverrides }) {
   };
 }
 
-function writeManifest({ campaignDir, slug, generatorRoot, pageIdOverrides }) {
-  const manifest = buildManifest({ campaignDir, slug, generatorRoot, pageIdOverrides });
+function writeManifest({ campaignDir, slug, generatorRoot, pageIdOverrides, screenshots = true }) {
+  const warnings = [];
+  const manifest = buildManifest({ campaignDir, slug, generatorRoot, pageIdOverrides, screenshots, warnings });
   const outDir = path.join(campaignDir, '.campaigns-os');
   const outPath = path.join(outDir, 'source-html-manifest.json');
 
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(outPath, JSON.stringify(manifest, null, 2) + '\n');
 
-  return { manifest, outPath };
+  return { manifest, outPath, warnings };
+}
+
+// Human-readable per-page screenshot status for CLI output.
+function describeScreenshots(page) {
+  if (!Array.isArray(page.screenshots)) return '';
+  return page.screenshots
+    .map((shot) => (shot.availability === 'available'
+      ? `${shot.viewport} ${shot.width}x${shot.height}`
+      : `${shot.viewport} MISSING (${shot.unavailable_reason})`))
+    .join('; ');
+}
+
+// Shared --page-id parsing for handoff.js and this script's own CLI.
+function parsePageIdArgs(rawArgs, onError = (message) => { throw new Error(message); }) {
+  const out = { rest: [], pageIdOverrides: new Map() };
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index];
+    if (arg === '--page-id') {
+      const value = rawArgs[index + 1];
+      if (!value || value.startsWith('--')) {
+        onError('--page-id requires a value, e.g. --page-id landing=page_most7ygt_415');
+        return out;
+      }
+      addPageIdOverride(out.pageIdOverrides, value, onError);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith('--page-id=')) {
+      addPageIdOverride(out.pageIdOverrides, arg.slice('--page-id='.length), onError);
+      continue;
+    }
+    out.rest.push(arg);
+  }
+  return out;
+}
+
+function addPageIdOverride(overrides, value, onError) {
+  const match = value.match(/^([^=:]+)[=:](.+)$/);
+  if (!match || !match[1].trim() || !match[2].trim()) {
+    onError(`Invalid --page-id value "${value}". Use <page>=<CampaignSpec page id>, e.g. landing=page_most7ygt_415.`);
+    return;
+  }
+  overrides.set(match[1].trim(), match[2].trim());
 }
 
 function collectMaterialFiles(campaignDir) {
@@ -241,17 +304,26 @@ if (require.main === module) {
 
   if (args.includes('--help') || args.includes('-h') || args.length === 0) {
     console.log(`Usage:
-  node scripts/write-handoff-manifest.js <slug>
+  node scripts/write-handoff-manifest.js <slug> [--page-id landing=<spec page id>]
 
 Writes <campaign>/.campaigns-os/source-html-manifest.json describing the
-page-kit pages this export produced (landing.html, presell.html).
+page-kit pages this export produced (landing.html, presell.html), and for
+each page stitches the per-section Figma renders in _ref/ into one PNG per
+viewport under _ref/pages/ so campaigns-os intake has desktop + mobile
+source screenshot proof (pages[].screenshots[]).
 
 The manifest is consumed by campaigns-os to populate the Build Packet's
-source_html.pages[] block without manual authoring.`);
+source_html.pages[] block without manual authoring. Screenshots attach only
+when page_id equals the CampaignSpec page id; pass --page-id when the spec
+uses generated ids.`);
     process.exit(args.length === 0 ? 1 : 0);
   }
 
-  const slug = args.find((arg) => !arg.startsWith('--'));
+  const parsed = parsePageIdArgs(args, (message) => {
+    console.error(`[handoff-manifest] ${message}`);
+    process.exit(1);
+  });
+  const slug = parsed.rest.find((arg) => !arg.startsWith('--'));
   const generatorRoot = path.resolve(__dirname, '..');
   const campaignDir = path.join(generatorRoot, 'src', slug);
 
@@ -260,14 +332,31 @@ source_html.pages[] block without manual authoring.`);
     process.exit(1);
   }
 
-  const { manifest, outPath } = writeManifest({ campaignDir, slug, generatorRoot });
+  const { manifest, outPath, warnings } = writeManifest({
+    campaignDir,
+    slug,
+    generatorRoot,
+    pageIdOverrides: parsed.pageIdOverrides,
+  });
+
+  for (const warning of warnings) console.warn(`[handoff-manifest] WARNING: ${warning}`);
 
   if (manifest.pages.length === 0) {
     console.warn(`[handoff-manifest] No landing.html or presell.html found in src/${slug}/. Manifest written with empty pages[] — campaigns-os will treat this as collect-inputs.`);
   } else {
     const summary = manifest.pages.map((p) => `${p.page_id} (${p.path})`).join(', ');
     console.log(`[handoff-manifest] Wrote ${path.relative(generatorRoot, outPath)} — ${summary}`);
+    for (const page of manifest.pages) {
+      console.log(`[handoff-manifest]   ${page.page_id} screenshots: ${describeScreenshots(page)}`);
+    }
   }
 }
 
-module.exports = { buildManifest, writeManifest, SCHEMA_VERSION, PAGE_DETECTORS };
+module.exports = {
+  buildManifest,
+  describeScreenshots,
+  parsePageIdArgs,
+  writeManifest,
+  SCHEMA_VERSION,
+  PAGE_DETECTORS,
+};

@@ -146,7 +146,7 @@ Select your campaign from the list → opens the configured `entry_url`, usually
 | `npm run build` | Production build |
 | `npm run compare <slug> [ref-prefix] [port]` | Open side-by-side Figma vs live compare page |
 | `npm run validate -- <slug>` | Validate local export output against the public starter-template patterns |
-| `npm run handoff -- <slug> [ref-prefix]` | Run final developer handoff checks: validate, compare when refs are available, compress final images, and write the campaigns-os source-html manifest |
+| `npm run handoff -- <slug> [ref-prefix] [--page-id landing=<spec id>]` | Run final developer handoff checks: validate, compare when refs are available, compress final images, stitch `_ref/` section renders into page screenshots under `_ref/pages/`, and write the campaigns-os source-html manifest |
 | `npm run manifest -- <slug>` | Write the campaigns-os source-html manifest standalone (see [docs/source-html-manifest.md](docs/source-html-manifest.md)) |
 | `npm run new <slug> <section>` | Scaffold a landing section preview |
 | `npm run new <slug> presell "Display Name" presell-page` | Scaffold a standalone presell page |
@@ -1068,6 +1068,8 @@ src/novaburn-presale/_ref/
   hero-tablet.png
   hero-mobile.png
 ```
+
+**These refs are also the handoff's source-screenshot proof.** `npm run handoff` stitches every section's `_ref/{section}-desktop.png` and `-mobile.png`, in `landing.html` include order, into `_ref/pages/landing-desktop.png` / `-mobile.png` and records them in the campaigns-os manifest; campaigns-os 1.20 refuses intake without them. So every section on the page needs its desktop and mobile refs saved before handoff, at one frame width per viewport — `npm run validate` names any section whose ref is missing. Do not skip `save-ref` for a section just because you are not comparing it.
 
 ---
 

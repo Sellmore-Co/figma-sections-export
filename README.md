@@ -174,7 +174,7 @@ New landing preview campaigns copy their behavior from [templates/landing/assets
 
 Compression is final-handoff only. `npm run compress -- <slug>` intentionally scans only `src/<slug>/assets/images/`; it does not compress `_ref/` comparison screenshots and it does not touch other campaign folders.
 
-Final handoff also writes `src/<slug>/.campaigns-os/source-html-manifest.json` for Campaigns OS source intake. Page IDs default to filename-derived values such as `landing` and `presell`; when a CampaignSpec uses generated page IDs, pass overrides like `npm run handoff -- <slug> --page-id landing=page_most7ygt_415`.
+Final handoff also writes `src/<slug>/.campaigns-os/source-html-manifest.json` for Campaigns OS source intake, and stitches the per-section Figma renders in `_ref/` into one desktop and one mobile page screenshot under `_ref/pages/` so the export clears the campaigns-os 1.20 design-source gate. Every section on the page needs its desktop and mobile refs saved first (`save-ref.sh`), or `npm run validate` fails naming the section. Page IDs default to filename-derived values such as `landing` and `presell`; campaigns-os attaches the screenshots only when the id equals the CampaignSpec page id, so when a spec uses generated page IDs pass overrides like `npm run handoff -- <slug> --page-id landing=page_most7ygt_415`. See [docs/source-html-manifest.md](docs/source-html-manifest.md).
 
 Current Figma naming conventions cover assets and tokens. Behaviour is inferred from the section family, visible controls, and the matching reference partial.
 

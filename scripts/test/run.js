@@ -317,6 +317,7 @@ test('validate-export rejects Figma provenance without semantic materials', () =
 });
 
 require('./compare-score.test-block')({ assert, fixtures: FIXTURES, test });
+require('./page-screenshots.test-block')({ assert, fixtures: FIXTURES, test });
 
 async function run() {
   for (const item of tests) {
